@@ -1,0 +1,20 @@
+# Secrets — NEVER commit
+.env
+
+# Virtual environment
+venv/
+
+# Python compiled files
+__pycache__/
+*.pyc
+*.pyo
+
+# Flask session files
+.flask_session/
+
+# VS Code settings
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db

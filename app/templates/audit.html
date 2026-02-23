@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>📋 Full Audit Log</h2>
+    <a href="/vm/dashboard" class="btn btn-outline-primary btn-sm">← Back</a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead class="table-dark">
+                <tr>
+                    <th>Timestamp</th>
+                    <th>User</th>
+                    <th>VM Name</th>
+                    <th>Action</th>
+                    <th>Result</th>
+                    <th>ServiceNow Ticket</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td><small>{{ log.timestamp }}</small></td>
+                    <td>
+                        {{ log.user_name }}<br>
+                        <small class="text-muted">{{ log.user_email }}</small>
+                    </td>
+                    <td>
+                        <strong>{{ log.vm_name }}</strong><br>
+                        <small class="text-muted">{{ log.resource_group }}</small>
+                    </td>
+                    <td>
+                        <span class="badge bg-primary">{{ log.action | upper }}</span>
+                    </td>
+                    <td>
+                        {% if log.status == 'success' %}
+                            <span class="badge bg-success">✅ Success</span>
+                        {% else %}
+                            <span class="badge bg-danger">❌ Failed</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if log.snow_ticket %}
+                            <a href="{{ log.snow_ticket_url }}"
+                               target="_blank"
+                               class="badge bg-info text-decoration-none">
+                                🎫 {{ log.snow_ticket }}
+                            </a>
+                        {% else %}
+                            <span class="text-muted small">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
