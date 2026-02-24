@@ -2,20 +2,30 @@
 
 {% block content %}
 
-<!-- Flash messages -->
+<!-- Alert Box -->
 <div id="alertBox"></div>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>📊 Your Virtual Machines</h2>
     <div>
         <span class="badge bg-primary me-2">{{ vms|length }} VMs</span>
-        <a href="/vm/audit" class="btn btn-outline-secondary btn-sm">📋 Audit Log</a>
-        <button onclick="location.reload()" class="btn btn-outline-primary btn-sm">🔄 Refresh</button>
+        <a href="/approvals/" class="btn btn-outline-warning btn-sm me-1">
+            ⚠️ Approvals
+        </a>
+        <a href="/vm/audit" class="btn btn-outline-secondary btn-sm me-1">
+            📋 Audit Log
+        </a>
+        <button onclick="location.reload()"
+                class="btn btn-outline-primary btn-sm">
+            🔄 Refresh
+        </button>
     </div>
 </div>
 
 {% if error %}
-<div class="alert alert-danger">⚠️ Error loading VMs: {{ error }}</div>
+<div class="alert alert-danger">
+    ⚠️ Error loading VMs: {{ error }}
+</div>
 {% endif %}
 
 <!-- VM Table -->
@@ -39,32 +49,63 @@
                     <td><strong>{{ vm.name }}</strong></td>
                     <td>
                         {% if vm.power_state == 'Running' %}
-                            <span class="badge bg-success">🟢 Running</span>
-                        {% elif vm.power_state == 'Stopped' or vm.power_state == 'Deallocated' %}
-                            <span class="badge bg-danger">🔴 {{ vm.power_state }}</span>
+                            <span class="badge bg-success">
+                                🟢 Running
+                            </span>
+                        {% elif vm.power_state == 'Stopped'
+                             or vm.power_state == 'Deallocated' %}
+                            <span class="badge bg-danger">
+                                🔴 {{ vm.power_state }}
+                            </span>
                         {% else %}
-                            <span class="badge bg-secondary">⚫ {{ vm.power_state }}</span>
+                            <span class="badge bg-secondary">
+                                ⚫ {{ vm.power_state }}
+                            </span>
                         {% endif %}
                     </td>
                     <td><code>{{ vm.size }}</code></td>
                     <td>{{ vm.location }}</td>
                     <td>{{ vm.os_type }}</td>
                     <td>
+                        <!-- Low risk — immediate execution -->
                         {% if vm.power_state == 'Running' %}
                             <button class="btn btn-warning btn-sm me-1"
-                                onclick="confirmAction('stop', '{{ vm.name }}', '{{ vm.resource_group }}')">
+                                onclick="confirmAction(
+                                    'stop',
+                                    '{{ vm.name }}',
+                                    '{{ vm.resource_group }}')">
                                 ⏹ Stop
                             </button>
-                            <button class="btn btn-info btn-sm"
-                                onclick="confirmAction('restart', '{{ vm.name }}', '{{ vm.resource_group }}')">
+                            <button class="btn btn-info btn-sm me-1"
+                                onclick="confirmAction(
+                                    'restart',
+                                    '{{ vm.name }}',
+                                    '{{ vm.resource_group }}')">
                                 🔄 Restart
                             </button>
                         {% else %}
-                            <button class="btn btn-success btn-sm"
-                                onclick="confirmAction('start', '{{ vm.name }}', '{{ vm.resource_group }}')">
+                            <button class="btn btn-success btn-sm me-1"
+                                onclick="confirmAction(
+                                    'start',
+                                    '{{ vm.name }}',
+                                    '{{ vm.resource_group }}')">
                                 ▶ Start
                             </button>
                         {% endif %}
+
+                        <!-- Medium risk — needs approval -->
+                        <button class="btn btn-secondary btn-sm"
+                            onclick="requestResize(
+                                '{{ vm.name }}',
+                                '{{ vm.resource_group }}',
+                                '{{ vm.size }}')">
+                            📐 Resize
+                        </button>
+                        <!-- VM detail page link -->
+                        <a href="/vm/{{ vm.name }}/detail?rg={{ vm.resource_group }}"
+                           class="btn btn-outline-primary btn-sm ms-1">
+                            🔧 Manage
+                        </a>
                     </td>
                 </tr>
                 {% endfor %}
@@ -96,12 +137,20 @@
                     <td><small>{{ log.timestamp }}</small></td>
                     <td><small>{{ log.user_name }}</small></td>
                     <td><small>{{ log.vm_name }}</small></td>
-                    <td><small><strong>{{ log.action | upper }}</strong></small></td>
+                    <td>
+                        <small>
+                            <strong>{{ log.action | upper }}</strong>
+                        </small>
+                    </td>
                     <td>
                         {% if log.status == 'success' %}
-                            <span class="badge bg-success">✅ Success</span>
+                            <span class="badge bg-success">
+                                ✅ Success
+                            </span>
                         {% else %}
-                            <span class="badge bg-danger">❌ Failed</span>
+                            <span class="badge bg-danger">
+                                ❌ Failed
+                            </span>
                         {% endif %}
                     </td>
                     <td>
@@ -123,16 +172,20 @@
 </div>
 {% endif %}
 
-<!-- Confirmation Modal -->
+<!-- Confirm Modal — Start Stop Restart -->
 <div class="modal fade" id="confirmModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">⚠️ Confirm Action</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p>You are about to <strong id="modalAction"></strong> VM:</p>
+                <p>You are about to
+                    <strong id="modalAction"></strong> VM:
+                </p>
                 <h5 id="modalVmName" class="text-primary"></h5>
                 <p class="text-muted small">
                     This action will be logged in the audit trail
@@ -147,9 +200,63 @@
                 </button>
                 <button type="button"
                         class="btn btn-danger"
-                        id="confirmBtn"
                         onclick="executeAction()">
                     Confirm
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Resize Modal — Approval Request -->
+<div class="modal fade" id="resizeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title">📐 Request VM Resize</h5>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Resizing VM:
+                    <strong id="resizeVmName"
+                            class="text-primary"></strong>
+                </p>
+                <p>Current size:
+                    <code id="resizeCurrentSize"></code>
+                </p>
+                <div class="alert alert-warning">
+                    ⚠️ This action requires
+                    <strong>2 approvals</strong>
+                    before executing. Both approvers will be
+                    notified via email and ServiceNow.
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">
+                        <strong>New VM Size</strong>
+                    </label>
+                    <input type="text"
+                           class="form-control"
+                           id="resizeNewSize"
+                           placeholder="e.g. Standard_D4s_v3">
+                    <div class="form-text">
+                        Common sizes: Standard_B2s, Standard_B4ms,
+                        Standard_D2s_v3, Standard_D4s_v3,
+                        Standard_D8s_v3
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-bs-dismiss="modal">
+                    Cancel
+                </button>
+                <button type="button"
+                        class="btn btn-warning"
+                        onclick="submitResizeRequest()">
+                    Submit for Approval
                 </button>
             </div>
         </div>
@@ -165,13 +272,15 @@
             justify-content:center;
             align-items:center;">
     <div class="text-center text-white">
-        <div class="spinner-border mb-3" style="width:3rem; height:3rem;"></div>
-        <h5>Processing action... please wait</h5>
-        <p class="small">Creating ServiceNow ticket automatically</p>
+        <div class="spinner-border mb-3"
+             style="width:3rem; height:3rem;"></div>
+        <h5 id="loadingText">Processing action... please wait</h5>
+        <p id="loadingSubtext" class="small text-white-50"></p>
     </div>
 </div>
 
 <script>
+    // ── Start / Stop / Restart ────────────────────────────────
     let currentAction = '';
     let currentVmName = '';
     let currentRg     = '';
@@ -181,8 +290,10 @@
         currentVmName = vmName;
         currentRg     = resourceGroup;
 
-        document.getElementById('modalAction').textContent = action.toUpperCase();
-        document.getElementById('modalVmName').textContent = vmName;
+        document.getElementById('modalAction').textContent =
+            action.toUpperCase();
+        document.getElementById('modalVmName').textContent =
+            vmName;
 
         new bootstrap.Modal(
             document.getElementById('confirmModal')
@@ -190,32 +301,38 @@
     }
 
     function executeAction() {
-        // Hide modal show loading
         bootstrap.Modal.getInstance(
             document.getElementById('confirmModal')
         ).hide();
-        document.getElementById('loadingOverlay').style.display = 'flex';
 
-        // Build form data
+        document.getElementById('loadingText').textContent =
+            'Processing action... please wait';
+        document.getElementById('loadingSubtext').textContent =
+            'Creating ServiceNow ticket automatically';
+        document.getElementById('loadingOverlay').style.display =
+            'flex';
+
         const formData = new FormData();
         formData.append('vm_name',        currentVmName);
         formData.append('resource_group', currentRg);
         formData.append('action',         currentAction);
 
-        // Call Flask endpoint
         fetch('/vm/action', {
             method: 'POST',
             body:   formData
         })
         .then(res => res.json())
         .then(data => {
-            document.getElementById('loadingOverlay').style.display = 'none';
+            document.getElementById(
+                'loadingOverlay'
+            ).style.display = 'none';
 
             const alertBox  = document.getElementById('alertBox');
-            const alertType = data.status === 'success' ? 'success' : 'danger';
-            const icon      = data.status === 'success' ? '✅' : '❌';
+            const alertType = data.status === 'success'
+                ? 'success' : 'danger';
+            const icon      = data.status === 'success'
+                ? '✅' : '❌';
 
-            // Build ticket link if ServiceNow ticket exists
             let ticketHtml = '';
             if (data.snow_ticket && data.snow_url) {
                 ticketHtml = `
@@ -228,25 +345,171 @@
             }
 
             alertBox.innerHTML = `
-                <div class="alert alert-${alertType} alert-dismissible fade show">
+                <div class="alert alert-${alertType}
+                            alert-dismissible fade show">
                     ${icon} ${data.message} ${ticketHtml}
                     <button type="button"
                             class="btn-close"
                             data-bs-dismiss="alert"></button>
                 </div>`;
 
-            // Reload after 3 seconds so user can see ticket number
             if (data.status === 'success') {
                 setTimeout(() => location.reload(), 3000);
             }
         })
         .catch(err => {
-            document.getElementById('loadingOverlay').style.display = 'none';
+            document.getElementById(
+                'loadingOverlay'
+            ).style.display = 'none';
             document.getElementById('alertBox').innerHTML = `
                 <div class="alert alert-danger">
                     ❌ Unexpected error: ${err.message}
                 </div>`;
         });
+    }
+
+    // ── Resize (Approval Workflow) ────────────────────────────
+    let resizeVmName  = '';
+    let resizeRg      = '';
+    let resizeCurrent = '';
+
+    function requestResize(vmName, resourceGroup, currentSize) {
+        resizeVmName  = vmName;
+        resizeRg      = resourceGroup;
+        resizeCurrent = currentSize;
+
+        document.getElementById('resizeVmName').textContent =
+            vmName;
+        document.getElementById('resizeCurrentSize').textContent =
+            currentSize;
+        document.getElementById('resizeNewSize').value = '';
+
+        new bootstrap.Modal(
+            document.getElementById('resizeModal')
+        ).show();
+    }
+
+    function submitResizeRequest() {
+        const newSize = document.getElementById(
+            'resizeNewSize'
+        ).value.trim();
+
+        if (!newSize) {
+            alert('Please enter a new VM size');
+            return;
+        }
+
+        bootstrap.Modal.getInstance(
+            document.getElementById('resizeModal')
+        ).hide();
+
+        document.getElementById('loadingText').textContent =
+            'Submitting approval request...';
+        document.getElementById('loadingSubtext').textContent =
+            'Notifying approvers via email and ServiceNow';
+        document.getElementById('loadingOverlay').style.display =
+            'flex';
+
+        const formData = new FormData();
+        formData.append('vm_name',        resizeVmName);
+        formData.append('resource_group', resizeRg);
+        formData.append('action',         'resize');
+        formData.append('action_details',
+            `${resizeCurrent} | ${newSize}`);
+
+        fetch('/approvals/request', {
+            method: 'POST',
+            body:   formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById(
+                'loadingOverlay'
+            ).style.display = 'none';
+
+            const alertType = data.success ? 'info'  : 'danger';
+            const icon      = data.success ? '⏳'    : '❌';
+
+            document.getElementById('alertBox').innerHTML = `
+                <div class="alert alert-${alertType}
+                            alert-dismissible fade show">
+                    ${icon} ${data.message}
+                    <a href="/approvals/"
+                       class="alert-link ms-2">
+                        View Approval Queue →
+                    </a>
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="alert"></button>
+                </div>`;
+
+            // Start polling if approval was created
+            if (data.success && data.approval_id) {
+                pollApprovalStatus(data.approval_id);
+            }
+        })
+        .catch(err => {
+            document.getElementById(
+                'loadingOverlay'
+            ).style.display = 'none';
+            document.getElementById('alertBox').innerHTML = `
+                <div class="alert alert-danger">
+                    ❌ Error: ${err.message}
+                </div>`;
+        });
+    }
+
+    // ── Poll Approval Status ──────────────────────────────────
+    function pollApprovalStatus(approvalId) {
+        // Check approval status every 10 seconds
+        let elapsed = 0;
+
+        const interval = setInterval(() => {
+            elapsed += 10;
+
+            fetch(`/approvals/status/${approvalId}`)
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('loadingText').textContent =
+                    `⏳ ${data.message}`;
+                document.getElementById(
+                    'loadingSubtext'
+                ).textContent =
+                    `${elapsed} seconds elapsed...`;
+
+                // Stop polling when done
+                if (data.status === 'executed' ||
+                    data.status === 'failed'   ||
+                    data.status === 'rejected') {
+
+                    clearInterval(interval);
+                    document.getElementById(
+                        'loadingOverlay'
+                    ).style.display = 'none';
+
+                    const alertType = data.status === 'executed'
+                        ? 'success' : 'danger';
+                    const icon = data.status === 'executed'
+                        ? '✅' : '❌';
+
+                    document.getElementById('alertBox').innerHTML =`
+                        <div class="alert alert-${alertType}
+                                    alert-dismissible fade show">
+                            ${icon} ${data.message}
+                            <button type="button"
+                                    class="btn-close"
+                                    data-bs-dismiss="alert">
+                            </button>
+                        </div>`;
+
+                    setTimeout(() => location.reload(), 2000);
+                }
+            })
+            .catch(err => {
+                console.error('Polling error:', err);
+            });
+
+        }, 10000); // poll every 10 seconds
     }
 </script>
 {% endblock %}

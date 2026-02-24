@@ -7,11 +7,9 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
-    # Sessions
     app.config['SESSION_TYPE'] = 'filesystem'
     Session(app)
 
-    # Database
     db.init_app(app)
 
     # Register Blueprints
@@ -21,7 +19,9 @@ def create_app():
     from app.vm.routes import vm_bp
     app.register_blueprint(vm_bp)
 
-    # Create DB tables on first run
+    from app.approvals.routes import approvals_bp      # ← NEW
+    app.register_blueprint(approvals_bp)
+
     with app.app_context():
         db.create_all()
 

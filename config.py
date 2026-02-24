@@ -51,6 +51,22 @@ class Config:
     SNOW_USERNAME     = os.getenv('SNOW_USERNAME')
     SNOW_PASSWORD     = os.getenv('SNOW_PASSWORD')
 
+     # Approvers — notification emails
+    APPROVER1_EMAIL = os.getenv('APPROVER1_EMAIL')
+    APPROVER2_EMAIL = os.getenv('APPROVER2_EMAIL')
+
+    # Approvers — Azure login emails (for portal access)
+    APPROVER1_AZURE = os.getenv('APPROVER1_AZURE')
+    APPROVER2_AZURE = os.getenv('APPROVER2_AZURE')
+
+    # Email
+    MAIL_SERVER         = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
+    MAIL_PORT           = int(os.getenv('MAIL_PORT', 587))
+    MAIL_USE_TLS        = True
+    MAIL_USERNAME       = os.getenv('MAIL_USERNAME')
+    MAIL_PASSWORD       = os.getenv('MAIL_PASSWORD')
+    MAIL_DEFAULT_SENDER = os.getenv('MAIL_DEFAULT_SENDER')
+
 
 
 

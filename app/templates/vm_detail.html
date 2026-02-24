@@ -1,0 +1,492 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div id="alertBox"></div>
+
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2>🖥️ {{ vm_name }}</h2>
+        <small class="text-muted">
+            Resource Group: {{ resource_group }}
+        </small>
+    </div>
+    <a href="/vm/dashboard"
+       class="btn btn-outline-primary btn-sm">
+        ← Back to Dashboard
+    </a>
+</div>
+
+{% if error %}
+<div class="alert alert-danger">⚠️ {{ error }}</div>
+{% endif %}
+
+<!-- Disks Section -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-dark text-white
+                d-flex justify-content-between
+                align-items-center">
+        <span>💿 Attached Disks</span>
+        <button class="btn btn-success btn-sm"
+                onclick="showAttachModal()">
+            + Attach Disk
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead class="table-secondary">
+                <tr>
+                    <th>Disk Name</th>
+                    <th>Type</th>
+                    <th>LUN</th>
+                    <th>Size</th>
+                    <th>Caching</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for disk in disks %}
+                <tr>
+                    <td><strong>{{ disk.name }}</strong></td>
+                    <td>
+                        {% if disk.type == 'OS Disk' %}
+                            <span class="badge bg-primary">
+                                💿 OS Disk
+                            </span>
+                        {% else %}
+                            <span class="badge bg-info">
+                                💾 Data Disk
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {{ disk.lun if disk.lun is not none
+                           else '—' }}
+                    </td>
+                    <td>{{ disk.size_gb }} GB</td>
+                    <td><small>{{ disk.caching }}</small></td>
+                    <td>
+                        <!-- Snapshot button for all disks -->
+                        <button class="btn btn-warning btn-sm me-1"
+                            onclick="requestSnapshot(
+                                '{{ disk.name }}',
+                                'create')">
+                            📸 Snapshot
+                        </button>
+
+                        <!-- Detach only for data disks -->
+                        {% if disk.can_detach %}
+                            <button
+                                class="btn btn-danger btn-sm"
+                                onclick="requestDiskAction(
+                                    'disk_detach',
+                                    '{{ disk.name }}',
+                                    '{{ disk.disk_id }}')">
+                                ⏏ Detach
+                            </button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Snapshots Section -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-dark text-white">
+        📸 Snapshots
+        <span class="badge bg-secondary ms-2">
+            {{ snapshots|length }}
+        </span>
+    </div>
+    <div class="card-body p-0">
+        {% if snapshots %}
+        <table class="table table-hover mb-0">
+            <thead class="table-secondary">
+                <tr>
+                    <th>Snapshot Name</th>
+                    <th>Size</th>
+                    <th>Created</th>
+                    <th>State</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for snap in snapshots %}
+                <tr>
+                    <td><strong>{{ snap.name }}</strong></td>
+                    <td>{{ snap.size_gb }} GB</td>
+                    <td><small>{{ snap.created_at }}</small></td>
+                    <td>
+                        <span class="badge bg-success">
+                            {{ snap.state }}
+                        </span>
+                    </td>
+                    <td>
+                        <button
+                            class="btn btn-danger btn-sm"
+                            onclick="requestSnapshot(
+                                '{{ snap.name }}',
+                                'delete')">
+                            🗑 Delete
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="p-3 text-muted">
+            No snapshots found in this resource group.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Attach Disk Modal -->
+<div class="modal fade" id="attachModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">+ Attach Data Disk</h5>
+                <button type="button"
+                        class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    ⚠️ Requires <strong>2 approvals</strong>
+                    before executing.
+                </div>
+                {% if available_disks %}
+                <div class="mb-3">
+                    <label class="form-label">
+                        <strong>Select Available Disk</strong>
+                    </label>
+                    <select class="form-select"
+                            id="selectedDisk">
+                        <option value="">
+                            -- Select a disk --
+                        </option>
+                        {% for disk in available_disks %}
+                        <option
+                            value="{{ disk.name }}|{{ disk.id }}">
+                            {{ disk.name }}
+                            ({{ disk.size_gb }}GB —
+                            {{ disk.sku }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    No unattached disks found in
+                    {{ resource_group }}.
+                    <br>Create a disk in Azure Portal first.
+                </div>
+                {% endif %}
+            </div>
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-bs-dismiss="modal">
+                    Cancel
+                </button>
+                {% if available_disks %}
+                <button type="button"
+                        class="btn btn-success"
+                        onclick="submitAttachRequest()">
+                    Submit for Approval
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Snapshot Confirm Modal -->
+<div class="modal fade" id="snapshotModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title"
+                    id="snapshotModalTitle">
+                    📸 Snapshot Action
+                </h5>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    ⚠️ Requires <strong>2 approvals</strong>
+                    before executing.
+                </div>
+                <p id="snapshotModalBody"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-bs-dismiss="modal">
+                    Cancel
+                </button>
+                <button type="button"
+                        class="btn btn-warning"
+                        onclick="submitSnapshotRequest()">
+                    Submit for Approval
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Spinner -->
+<div id="loadingOverlay"
+     style="display:none; position:fixed; top:0; left:0;
+            width:100%; height:100%;
+            background:rgba(0,0,0,0.5);
+            z-index:9999;
+            justify-content:center;
+            align-items:center;">
+    <div class="text-center text-white">
+        <div class="spinner-border mb-3"
+             style="width:3rem; height:3rem;"></div>
+        <h5 id="loadingText">Submitting request...</h5>
+        <p id="loadingSubtext"
+           class="small text-white-50"></p>
+    </div>
+</div>
+
+<script>
+    const VM_NAME        = '{{ vm_name }}';
+    const RESOURCE_GROUP = '{{ resource_group }}';
+
+    // ── Attach Disk ───────────────────────────────────────────
+    function showAttachModal() {
+        new bootstrap.Modal(
+            document.getElementById('attachModal')
+        ).show();
+    }
+
+    function submitAttachRequest() {
+        const selected = document.getElementById(
+            'selectedDisk'
+        ).value;
+
+        if (!selected) {
+            alert('Please select a disk');
+            return;
+        }
+
+        const parts    = selected.split('|');
+        const diskName = parts[0];
+        const diskId   = parts[1];
+
+        bootstrap.Modal.getInstance(
+            document.getElementById('attachModal')
+        ).hide();
+
+        showLoading(
+            'Submitting disk attach approval...',
+            'Notifying approvers via email and ServiceNow'
+        );
+
+        const formData = new FormData();
+        formData.append('vm_name',        VM_NAME);
+        formData.append('resource_group', RESOURCE_GROUP);
+        formData.append('action',         'disk_attach');
+        formData.append('disk_name',      diskName);
+        formData.append('disk_id',        diskId);
+
+        submitRequest('/vm/disk/action', formData);
+    }
+
+    function requestDiskAction(action, diskName, diskId) {
+        if (!confirm(
+            `Request ${action.replace('_', ' ')} for ` +
+            `disk: ${diskName}?\n\n` +
+            `This requires 2 approvals before executing.`
+        )) return;
+
+        showLoading(
+            'Submitting disk action approval...',
+            'Notifying approvers via email and ServiceNow'
+        );
+
+        const formData = new FormData();
+        formData.append('vm_name',        VM_NAME);
+        formData.append('resource_group', RESOURCE_GROUP);
+        formData.append('action',         action);
+        formData.append('disk_name',      diskName);
+        formData.append('disk_id',        diskId);
+
+        submitRequest('/vm/disk/action', formData);
+    }
+
+    // ── Snapshots ─────────────────────────────────────────────
+    let snapAction = '';
+    let snapTarget = '';
+
+    function requestSnapshot(name, action) {
+        snapAction = action;
+        snapTarget = name;
+
+        const title = action === 'create'
+            ? `📸 Create Snapshot of ${name}`
+            : `🗑 Delete Snapshot ${name}`;
+
+        const body = action === 'create'
+            ? `A snapshot of disk <strong>${name}</strong>
+               will be created.`
+            : `Snapshot <strong>${name}</strong>
+               will be permanently deleted.`;
+
+        document.getElementById(
+            'snapshotModalTitle'
+        ).innerHTML = title;
+        document.getElementById(
+            'snapshotModalBody'
+        ).innerHTML = body;
+
+        new bootstrap.Modal(
+            document.getElementById('snapshotModal')
+        ).show();
+    }
+
+    function submitSnapshotRequest() {
+        bootstrap.Modal.getInstance(
+            document.getElementById('snapshotModal')
+        ).hide();
+
+        showLoading(
+            'Submitting snapshot approval...',
+            'Notifying approvers via email and ServiceNow'
+        );
+
+        const formData = new FormData();
+        formData.append('vm_name',        VM_NAME);
+        formData.append('resource_group', RESOURCE_GROUP);
+        formData.append('action',
+            snapAction === 'create'
+                ? 'snapshot_create'
+                : 'snapshot_delete'
+        );
+        formData.append('disk_name',     snapTarget);
+        formData.append('snapshot_name', snapTarget);
+
+        submitRequest('/vm/snapshot/action', formData);
+    }
+
+    // ── Shared Submit ─────────────────────────────────────────
+    function submitRequest(url, formData) {
+        fetch(url, { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+            hideLoading();
+
+            const alertType = data.success ? 'info'  : 'danger';
+            const icon      = data.success ? '⏳'    : '❌';
+
+            document.getElementById('alertBox').innerHTML = `
+                <div class="alert alert-${alertType}
+                            alert-dismissible fade show">
+                    ${icon} ${data.message}
+                    <a href="/approvals/"
+                       class="alert-link ms-2">
+                        View Approval Queue →
+                    </a>
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="alert"></button>
+                </div>`;
+
+            // Start polling if approval created
+            if (data.success && data.approval_id) {
+                pollActionStatus(data.approval_id);
+            }
+        })
+        .catch(err => {
+            hideLoading();
+            document.getElementById('alertBox').innerHTML = `
+                <div class="alert alert-danger">
+                    ❌ Error: ${err.message}
+                </div>`;
+        });
+    }
+
+    // ── Poll Action Status ────────────────────────────────────
+    function pollActionStatus(approvalId) {
+        // Show spinner while polling
+        showLoading(
+            '⏳ Request submitted — waiting for approval...',
+            'Page will refresh automatically when complete'
+        );
+
+        let elapsed = 0;
+
+        const interval = setInterval(() => {
+            elapsed += 10;
+
+            fetch(`/approvals/status/${approvalId}`)
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById(
+                    'loadingText'
+                ).textContent = `⏳ ${data.message}`;
+
+                document.getElementById(
+                    'loadingSubtext'
+                ).textContent = `${elapsed} seconds elapsed...`;
+
+                // Stop polling when done
+                if (data.status === 'executed' ||
+                    data.status === 'failed'   ||
+                    data.status === 'rejected') {
+
+                    clearInterval(interval);
+                    hideLoading();
+
+                    const alertType = data.status === 'executed'
+                        ? 'success' : 'danger';
+                    const icon = data.status === 'executed'
+                        ? '✅' : '❌';
+
+                    document.getElementById('alertBox').innerHTML =`
+                        <div class="alert alert-${alertType}
+                                    alert-dismissible fade show">
+                            ${icon} ${data.message}
+                            <button type="button"
+                                    class="btn-close"
+                                    data-bs-dismiss="alert">
+                            </button>
+                        </div>`;
+
+                    // Auto reload to show updated disks
+                    setTimeout(() => location.reload(), 2000);
+                }
+            })
+            .catch(err => {
+                console.error('Polling error:', err);
+            });
+
+        }, 10000); // poll every 10 seconds
+    }
+
+    // ── Loading Helpers ───────────────────────────────────────
+    function showLoading(text, subtext='') {
+        document.getElementById('loadingText').textContent =
+            text;
+        document.getElementById('loadingSubtext').textContent =
+            subtext;
+        document.getElementById('loadingOverlay').style.display =
+            'flex';
+    }
+
+    function hideLoading() {
+        document.getElementById('loadingOverlay').style.display =
+            'none';
+    }
+</script>
+{% endblock %}

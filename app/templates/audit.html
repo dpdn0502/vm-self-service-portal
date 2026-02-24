@@ -1,61 +1,537 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>📋 Full Audit Log</h2>
-    <a href="/vm/dashboard" class="btn btn-outline-primary btn-sm">← Back</a>
-</div>
+<div id="alertBox"></div>
 
-<div class="card shadow-sm">
-    <div class="card-body p-0">
-        <table class="table table-hover mb-0">
-            <thead class="table-dark">
-                <tr>
-                    <th>Timestamp</th>
-                    <th>User</th>
-                    <th>VM Name</th>
-                    <th>Action</th>
-                    <th>Result</th>
-                    <th>ServiceNow Ticket</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for log in logs %}
-                <tr>
-                    <td><small>{{ log.timestamp }}</small></td>
-                    <td>
-                        {{ log.user_name }}<br>
-                        <small class="text-muted">{{ log.user_email }}</small>
-                    </td>
-                    <td>
-                        <strong>{{ log.vm_name }}</strong><br>
-                        <small class="text-muted">{{ log.resource_group }}</small>
-                    </td>
-                    <td>
-                        <span class="badge bg-primary">{{ log.action | upper }}</span>
-                    </td>
-                    <td>
-                        {% if log.status == 'success' %}
-                            <span class="badge bg-success">✅ Success</span>
-                        {% else %}
-                            <span class="badge bg-danger">❌ Failed</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if log.snow_ticket %}
-                            <a href="{{ log.snow_ticket_url }}"
-                               target="_blank"
-                               class="badge bg-info text-decoration-none">
-                                🎫 {{ log.snow_ticket }}
-                            </a>
-                        {% else %}
-                            <span class="text-muted small">—</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+<!-- Header -->
+<div class="d-flex justify-content-between
+            align-items-center mb-4">
+    <h2>📋 Audit & Reporting</h2>
+    <div>
+        <a href="/vm/audit/export"
+           class="btn btn-success btn-sm me-1">
+            📥 Export CSV
+        </a>
+        <a href="/vm/dashboard"
+           class="btn btn-outline-primary btn-sm">
+            ← Dashboard
+        </a>
     </div>
 </div>
+
+<!-- Summary Cards -->
+<div class="row mb-4" id="summaryCards">
+    <div class="col-md-3">
+        <div class="card shadow-sm text-center
+                    border-primary">
+            <div class="card-body">
+                <h1 class="text-primary"
+                    id="totalActions">—</h1>
+                <p class="text-muted mb-0">
+                    Total Actions
+                </p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm text-center
+                    border-success">
+            <div class="card-body">
+                <h1 class="text-success"
+                    id="totalSuccess">—</h1>
+                <p class="text-muted mb-0">
+                    Successful
+                </p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm text-center
+                    border-danger">
+            <div class="card-body">
+                <h1 class="text-danger"
+                    id="totalFailed">—</h1>
+                <p class="text-muted mb-0">
+                    Failed
+                </p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm text-center
+                    border-warning">
+            <div class="card-body">
+                <h1 class="text-warning"
+                    id="totalFiltered">—</h1>
+                <p class="text-muted mb-0">
+                    Filtered Results
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="row mb-4">
+    <!-- Actions by Type -->
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-dark text-white">
+                📊 Actions by Type
+            </div>
+            <div class="card-body">
+                <canvas id="actionTypeChart"
+                        height="250"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success vs Failed -->
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-dark text-white">
+                ✅ Success vs Failed
+            </div>
+            <div class="card-body">
+                <canvas id="statusChart"
+                        height="250"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions by Day -->
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-dark text-white">
+                📅 Activity Last 7 Days
+            </div>
+            <div class="card-body">
+                <canvas id="activityChart"
+                        height="250"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Top Users -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-dark text-white">
+                👤 Top 5 Most Active Users
+            </div>
+            <div class="card-body">
+                <canvas id="userChart"
+                        height="100"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-dark text-white">
+        🔍 Filter Audit Log
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-2">
+                <label class="form-label">
+                    <small>Date From</small>
+                </label>
+                <input type="date"
+                       class="form-control form-control-sm"
+                       id="filterDateFrom">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">
+                    <small>Date To</small>
+                </label>
+                <input type="date"
+                       class="form-control form-control-sm"
+                       id="filterDateTo">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">
+                    <small>VM Name</small>
+                </label>
+                <input type="text"
+                       class="form-control form-control-sm"
+                       id="filterVm"
+                       placeholder="e.g. OMSDPDNVM1">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">
+                    <small>User Email</small>
+                </label>
+                <input type="text"
+                       class="form-control form-control-sm"
+                       id="filterUser"
+                       placeholder="e.g. dinesh@...">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">
+                    <small>Action Type</small>
+                </label>
+                <select class="form-select form-select-sm"
+                        id="filterAction">
+                    <option value="">All Actions</option>
+                    <option value="start">Start</option>
+                    <option value="stop">Stop</option>
+                    <option value="restart">Restart</option>
+                    <option value="resize">Resize</option>
+                    <option value="disk_attach">
+                        Disk Attach
+                    </option>
+                    <option value="disk_detach">
+                        Disk Detach
+                    </option>
+                    <option value="snapshot_create">
+                        Snapshot Create
+                    </option>
+                    <option value="snapshot_delete">
+                        Snapshot Delete
+                    </option>
+                </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <div class="d-flex gap-2 w-100">
+                    <button class="btn btn-primary
+                                   btn-sm w-100"
+                            onclick="applyFilters()">
+                        🔍 Filter
+                    </button>
+                    <button class="btn btn-outline-secondary
+                                   btn-sm w-100"
+                            onclick="clearFilters()">
+                        ✕ Clear
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Audit Log Table -->
+<div class="card shadow-sm">
+    <div class="card-header bg-dark text-white
+                d-flex justify-content-between
+                align-items-center">
+        <span>📋 Audit Log</span>
+        <span class="badge bg-secondary"
+              id="resultCount">Loading...</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover
+                          table-sm mb-0"
+                   id="auditTable">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>User</th>
+                        <th>VM</th>
+                        <th>Action</th>
+                        <th>Status</th>
+                        <th>Message</th>
+                        <th>Ticket</th>
+                    </tr>
+                </thead>
+                <tbody id="auditTableBody">
+                    <tr>
+                        <td colspan="7"
+                            class="text-center
+                                   text-muted p-4">
+                            Loading audit data...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Chart.js CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/
+Chart.js/4.4.0/chart.umd.min.js"></script>
+
+<script>
+    // ── Chart instances ───────────────────────────────────────
+    let actionTypeChart = null;
+    let statusChart     = null;
+    let activityChart   = null;
+    let userChart       = null;
+
+    // ── Load Stats and Draw Charts ────────────────────────────
+    function loadStats() {
+        fetch('/vm/audit/stats')
+        .then(res => res.json())
+        .then(data => {
+            // Update summary cards
+            document.getElementById('totalActions').textContent =
+                data.totals.total;
+            document.getElementById('totalSuccess').textContent =
+                data.totals.success;
+            document.getElementById('totalFailed').textContent =
+                data.totals.failed;
+
+            drawActionTypeChart(data.actions_by_type);
+            drawStatusChart(data.actions_by_status);
+            drawActivityChart(data.actions_by_day);
+            drawUserChart(data.actions_by_user);
+        });
+    }
+
+    function drawActionTypeChart(data) {
+        const ctx = document.getElementById(
+            'actionTypeChart'
+        ).getContext('2d');
+
+        if (actionTypeChart) actionTypeChart.destroy();
+
+        actionTypeChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: data.map(d => d.action.toUpperCase()),
+                datasets: [{
+                    data: data.map(d => d.count),
+                    backgroundColor: [
+                        '#0078d4', '#28a745', '#ffc107',
+                        '#dc3545', '#6f42c1', '#17a2b8',
+                        '#fd7e14', '#20c997'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+    }
+
+    function drawStatusChart(data) {
+        const ctx = document.getElementById(
+            'statusChart'
+        ).getContext('2d');
+
+        if (statusChart) statusChart.destroy();
+
+        const colors = data.map(d =>
+            d.status === 'success' ? '#28a745' : '#dc3545'
+        );
+
+        statusChart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: data.map(d => d.status.toUpperCase()),
+                datasets: [{
+                    data:            data.map(d => d.count),
+                    backgroundColor: colors
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+    }
+
+    function drawActivityChart(data) {
+        const ctx = document.getElementById(
+            'activityChart'
+        ).getContext('2d');
+
+        if (activityChart) activityChart.destroy();
+
+        // Reverse so oldest date is on left
+        const reversed = [...data].reverse();
+
+        activityChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: reversed.map(d => d.date),
+                datasets: [{
+                    label:           'Actions',
+                    data:            reversed.map(d => d.count),
+                    backgroundColor: '#0078d4'
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { stepSize: 1 }
+                    }
+                }
+            }
+        });
+    }
+
+    function drawUserChart(data) {
+        const ctx = document.getElementById(
+            'userChart'
+        ).getContext('2d');
+
+        if (userChart) userChart.destroy();
+
+        userChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: data.map(d => d.user || 'Unknown'),
+                datasets: [{
+                    label:           'Actions',
+                    data:            data.map(d => d.count),
+                    backgroundColor: '#6f42c1'
+                }]
+            },
+            options: {
+                responsive:  true,
+                indexAxis:   'y',
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        ticks: { stepSize: 1 }
+                    }
+                }
+            }
+        });
+    }
+
+    // ── Load Audit Table ──────────────────────────────────────
+    function loadAuditData(params = {}) {
+        const queryString = new URLSearchParams(
+            params
+        ).toString();
+
+        fetch(`/vm/audit/data?${queryString}`)
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById(
+                'totalFiltered'
+            ).textContent = data.total;
+
+            document.getElementById(
+                'resultCount'
+            ).textContent = `${data.total} records`;
+
+            const tbody = document.getElementById(
+                'auditTableBody'
+            );
+
+            if (data.logs.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7"
+                            class="text-center
+                                   text-muted p-4">
+                            No records found
+                        </td>
+                    </tr>`;
+                return;
+            }
+
+            tbody.innerHTML = data.logs.map(log => `
+                <tr>
+                    <td>
+                        <small>${log.timestamp}</small>
+                    </td>
+                    <td>
+                        <small>${log.user_name || '—'}</small>
+                        <br>
+                        <small class="text-muted">
+                            ${log.user_email || '—'}
+                        </small>
+                    </td>
+                    <td>
+                        <strong>${log.vm_name || '—'}</strong>
+                        <br>
+                        <small class="text-muted">
+                            ${log.resource_group || '—'}
+                        </small>
+                    </td>
+                    <td>
+                        <span class="badge bg-primary">
+                            ${(log.action || '').toUpperCase()}
+                        </span>
+                    </td>
+                    <td>
+                        ${log.status === 'success'
+                            ? '<span class="badge bg-success">✅ Success</span>'
+                            : '<span class="badge bg-danger">❌ Failed</span>'
+                        }
+                    </td>
+                    <td>
+                        <small>${log.message || '—'}</small>
+                    </td>
+                    <td>
+                        ${log.snow_ticket
+                            ? `<a href="${log.snow_ticket_url}"
+                                  target="_blank"
+                                  class="badge bg-info
+                                         text-decoration-none">
+                                   🎫 ${log.snow_ticket}
+                               </a>`
+                            : '<span class="text-muted">—</span>'
+                        }
+                    </td>
+                </tr>
+            `).join('');
+        });
+    }
+
+    // ── Filters ───────────────────────────────────────────────
+    function applyFilters() {
+        const params = {};
+
+        const dateFrom = document.getElementById(
+            'filterDateFrom'
+        ).value;
+        const dateTo   = document.getElementById(
+            'filterDateTo'
+        ).value;
+        const vm       = document.getElementById(
+            'filterVm'
+        ).value;
+        const user     = document.getElementById(
+            'filterUser'
+        ).value;
+        const action   = document.getElementById(
+            'filterAction'
+        ).value;
+
+        if (dateFrom) params.date_from = dateFrom;
+        if (dateTo)   params.date_to   = dateTo;
+        if (vm)       params.vm        = vm;
+        if (user)     params.user      = user;
+        if (action)   params.action    = action;
+
+        loadAuditData(params);
+    }
+
+    function clearFilters() {
+        document.getElementById('filterDateFrom').value = '';
+        document.getElementById('filterDateTo').value   = '';
+        document.getElementById('filterVm').value       = '';
+        document.getElementById('filterUser').value     = '';
+        document.getElementById('filterAction').value   = '';
+        loadAuditData();
+    }
+
+    // ── Init on page load ─────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', () => {
+        loadStats();
+        loadAuditData();
+    });
+</script>
 {% endblock %}

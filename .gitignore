@@ -1,20 +1,22 @@
-# Secrets — NEVER commit
+# Secrets
 .env
 
-# Virtual environment
+# Python
 venv/
-
-# Python compiled files
 __pycache__/
 *.pyc
 *.pyo
 
+# Database
+instance/
+*.db
+
 # Flask session files
+flask_session/
 .flask_session/
 
-# VS Code settings
-.vscode/
+# Test files
+smtptest.py
 
-# OS files
-.DS_Store
-Thumbs.db
+# VS Code
+.vscode/

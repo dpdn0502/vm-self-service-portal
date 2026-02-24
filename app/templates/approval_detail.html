@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>🔍 Approval Request #{{ approval.id }}</h2>
+    <a href="/approvals/" class="btn btn-outline-secondary btn-sm">
+        ← Back to Queue
+    </a>
+</div>
+
+<div id="alertBox"></div>
+
+<div class="row">
+    <!-- Request Details -->
+    <div class="col-md-6">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-dark text-white">
+                📋 Request Details
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless mb-0">
+                    <tr>
+                        <td><strong>Requested By</strong></td>
+                        <td>{{ approval.requester_name }}<br>
+                            <small class="text-muted">
+                                {{ approval.requester_email }}
+                            </small>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>VM Name</strong></td>
+                        <td>{{ approval.vm_name }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Resource Group</strong></td>
+                        <td>{{ approval.resource_group }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Action</strong></td>
+                        <td>{{ approval.action | upper }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Details</strong></td>
+                        <td>{{ approval.action_details }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Risk Level</strong></td>
+                        <td>
+                            {% if approval.risk_level == 'high' %}
+                                <span class="badge bg-danger">🔴 High</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">
+                                    🟡 Medium
+                                </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>Status</strong></td>
+                        <td>
+                            <span class="badge bg-primary">
+                                {{ approval.status | upper }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% if approval.snow_ticket %}
+                    <tr>
+                        <td><strong>Snow Ticket</strong></td>
+                        <td>
+                            <a href="{{ approval.snow_ticket_url }}"
+                               target="_blank">
+                                🎫 {{ approval.snow_ticket }}
+                            </a>
+                        </td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Approval Status -->
+    <div class="col-md-6">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-dark text-white">
+                ✅ Approval Status
+            </div>
+            <div class="card-body">
+                <p><strong>Approver 1:</strong>
+                    {{ approval.approver1_email }}<br>
+                    Status:
+                    <span class="badge
+                        {% if approval.approver1_status == 'approved' %}
+                            bg-success
+                        {% elif approval.approver1_status == 'rejected' %}
+                            bg-danger
+                        {% else %}bg-secondary{% endif %}">
+                        {{ approval.approver1_status | upper }}
+                    </span>
+                    {% if approval.approver1_comment %}
+                        <br><small>{{ approval.approver1_comment }}</small>
+                    {% endif %}
+                </p>
+                <hr>
+                <p><strong>Approver 2:</strong>
+                    {{ approval.approver2_email }}<br>
+                    Status:
+                    <span class="badge
+                        {% if approval.approver2_status == 'approved' %}
+                            bg-success
+                        {% elif approval.approver2_status == 'rejected' %}
+                            bg-danger
+                        {% else %}bg-secondary{% endif %}">
+                        {{ approval.approver2_status | upper }}
+                    </span>
+                    {% if approval.approver2_comment %}
+                        <br><small>{{ approval.approver2_comment }}</small>
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+
+        <!-- Decision Form — only show if pending -->
+        {% if approval.status == 'pending' %}
+        <div class="card shadow-sm border-warning">
+            <div class="card-header bg-warning text-dark">
+                ⚖️ Your Decision
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Comment (optional)</label>
+                    <textarea class="form-control" id="comment" rows="3"
+                              placeholder="Add a comment..."></textarea>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-success w-50"
+                            onclick="submitDecision('approved')">
+                        ✅ Approve
+                    </button>
+                    <button class="btn btn-danger w-50"
+                            onclick="submitDecision('rejected')">
+                        ❌ Reject
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    function submitDecision(decision) {
+        const comment  = document.getElementById('comment').value;
+        const formData = new FormData();
+        formData.append('decision', decision);
+        formData.append('comment',  comment);
+
+        fetch('/approvals/{{ approval.id }}/decide', {
+            method: 'POST',
+            body:   formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            const alertType = data.success ? 'success' : 'danger';
+            const icon      = data.success ? '✅' : '❌';
+            document.getElementById('alertBox').innerHTML = `
+                <div class="alert alert-${alertType}">
+                    ${icon} ${data.message || data.error}
+                </div>`;
+
+            if (data.success) {
+                setTimeout(() => window.location.href = '/approvals/', 2000);
+            }
+        });
+    }
+</script>
+{% endblock %}

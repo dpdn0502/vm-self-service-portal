@@ -66,3 +66,20 @@ def restart_vm(resource_group, vm_name):
     poller  = client.virtual_machines.begin_restart(resource_group, vm_name)
     poller.result()
     return f"VM '{vm_name}' restarted successfully"
+def resize_vm(resource_group, vm_name, new_size):
+    """Resize VM to a new SKU — requires approval first"""
+    client = get_compute_client()
+
+    # Get current VM
+    vm = client.virtual_machines.get(resource_group, vm_name)
+
+    # Update the size
+    vm.hardware_profile.vm_size = new_size
+
+    # Apply the change
+    poller = client.virtual_machines.begin_create_or_update(
+        resource_group, vm_name, vm
+    )
+    poller.result()
+
+    return f"VM '{vm_name}' resized to {new_size} successfully"
