@@ -1,0 +1,540 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ vm_name }} — VM Portal{% endblock %}
+{% block page_title %}{{ vm_name }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item">
+    <a href="/admin/vms">Virtual Machines</a>
+</li>
+<li class="breadcrumb-item active">{{ vm_name }}</li>
+{% endblock %}
+
+{% block content %}
+
+<div id="alertBox"></div>
+
+<div class="d-flex justify-content-between
+            align-items-center mb-3">
+    <small class="text-muted">
+        <i class="fas fa-layer-group me-1"></i>
+        Resource Group: {{ resource_group }}
+    </small>
+    <a href="/admin/vms"
+       class="btn btn-outline-secondary btn-sm">
+        <i class="fas fa-arrow-left me-1"></i>
+        Back to VMs
+    </a>
+</div>
+
+{% if error %}
+<div class="callout callout-danger">
+    <i class="fas fa-exclamation-triangle me-2"></i>
+    {{ error }}
+</div>
+{% endif %}
+
+<!-- Role Banner -->
+{% set role = session.get('portal_role', 'reader') %}
+{% if role == 'reader' %}
+<div class="callout callout-info">
+    <i class="fas fa-info-circle me-2"></i>
+    👁️ <strong>Read Only</strong> —
+    You can view disk and snapshot information
+    but cannot perform any actions.
+</div>
+{% elif role == 'operator' %}
+<div class="callout callout-success">
+    <i class="fas fa-info-circle me-2"></i>
+    ⚡ <strong>Operator</strong> —
+    You can create snapshots only.
+    Disk attach/detach requires Contributor role.
+</div>
+{% endif %}
+
+<!-- Disks Section -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-hdd me-2"></i>
+            Attached Disks
+        </h3>
+        <!-- Attach Disk — Contributor+ only -->
+        {% if session.get('portal_role') in
+              ['contributor', 'admin'] %}
+        <div class="card-tools">
+            <button class="btn btn-success btn-sm"
+                    onclick="showAttachModal()">
+                <i class="fas fa-plus me-1"></i>
+                Attach Disk
+            </button>
+        </div>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead class="thead-dark">
+                <tr>
+                    <th>Disk Name</th>
+                    <th>Type</th>
+                    <th>LUN</th>
+                    <th>Size</th>
+                    <th>Caching</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for disk in disks %}
+                <tr>
+                    <td>
+                        <strong>{{ disk.name }}</strong>
+                    </td>
+                    <td>
+                        {% if disk.type == 'OS Disk' %}
+                            <span class="badge badge-primary">
+                                <i class="fas fa-hdd"></i>
+                                OS Disk
+                            </span>
+                        {% else %}
+                            <span class="badge badge-info">
+                                <i class="fas fa-database"></i>
+                                Data Disk
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {{ disk.lun
+                           if disk.lun is not none
+                           else '—' }}
+                    </td>
+                    <td>{{ disk.size_gb }} GB</td>
+                    <td>
+                        <small>{{ disk.caching }}</small>
+                    </td>
+                    <td>
+                        <!-- Snapshot Create — Operator+ -->
+                        {% if session.get('portal_role') in
+                              ['operator', 'contributor',
+                               'admin'] %}
+                            <button
+                                class="btn btn-warning
+                                       btn-xs me-1"
+                                onclick="requestSnapshot(
+                                    '{{ disk.name }}',
+                                    'create')">
+                                <i class="fas fa-camera"></i>
+                                Snapshot
+                            </button>
+                        {% endif %}
+
+                        <!-- Detach — Contributor+ only -->
+                        {% if session.get('portal_role') in
+                              ['contributor', 'admin'] %}
+                            {% if disk.can_detach %}
+                                <button
+                                    class="btn btn-danger
+                                           btn-xs"
+                                    onclick="requestDiskAction(
+                                        'disk_detach',
+                                        '{{ disk.name }}',
+                                        '{{ disk.disk_id }}')">
+                                    <i class="fas fa-unlink">
+                                    </i>
+                                    Detach
+                                </button>
+                            {% endif %}
+                        {% endif %}
+
+                        <!-- Reader message -->
+                        {% if session.get('portal_role')
+                               == 'reader' %}
+                            <span class="badge
+                                         badge-secondary">
+                                👁️ View Only
+                            </span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Snapshots Section -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-camera me-2"></i>
+            Snapshots
+            <span class="badge badge-secondary ms-2">
+                {{ snapshots|length }}
+            </span>
+        </h3>
+    </div>
+    <div class="card-body p-0">
+        {% if snapshots %}
+        <table class="table table-hover mb-0">
+            <thead class="thead-dark">
+                <tr>
+                    <th>Snapshot Name</th>
+                    <th>Size</th>
+                    <th>Created</th>
+                    <th>State</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for snap in snapshots %}
+                <tr>
+                    <td>
+                        <strong>{{ snap.name }}</strong>
+                    </td>
+                    <td>{{ snap.size_gb }} GB</td>
+                    <td>
+                        <small>{{ snap.created_at }}</small>
+                    </td>
+                    <td>
+                        <span class="badge badge-success">
+                            {{ snap.state }}
+                        </span>
+                    </td>
+                    <td>
+                        <!-- Delete — Contributor+ only -->
+                        {% if session.get('portal_role') in
+                              ['contributor', 'admin'] %}
+                            <button
+                                class="btn btn-danger btn-xs"
+                                onclick="requestSnapshot(
+                                    '{{ snap.name }}',
+                                    'delete')">
+                                <i class="fas fa-trash"></i>
+                                Delete
+                            </button>
+                        {% else %}
+                            <span class="badge
+                                         badge-secondary">
+                                👁️ View Only
+                            </span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="p-3 text-muted">
+            <i class="fas fa-info-circle me-2"></i>
+            No snapshots found in this resource group.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Attach Disk Modal — Contributor+ only -->
+{% if session.get('portal_role') in
+      ['contributor', 'admin'] %}
+<div class="modal fade" id="attachModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success">
+                <h5 class="modal-title text-white">
+                    <i class="fas fa-plus me-2"></i>
+                    Attach Data Disk
+                </h5>
+                <button type="button"
+                        class="close text-white"
+                        data-dismiss="modal">
+                    <span>×</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="callout callout-warning">
+                    ⚠️ Requires
+                    <strong>2 approvals</strong>
+                    before executing.
+                </div>
+                {% if available_disks %}
+                <div class="form-group">
+                    <label>
+                        <strong>Select Available Disk</strong>
+                    </label>
+                    <select class="form-control"
+                            id="selectedDisk">
+                        <option value="">
+                            -- Select a disk --
+                        </option>
+                        {% for disk in available_disks %}
+                        <option
+                            value="{{ disk.name }}|{{ disk.id }}">
+                            {{ disk.name }}
+                            ({{ disk.size_gb }}GB —
+                            {{ disk.sku }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% else %}
+                <div class="callout callout-info">
+                    No unattached disks found in
+                    {{ resource_group }}.
+                    Create a disk in Azure Portal first.
+                </div>
+                {% endif %}
+            </div>
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-dismiss="modal">
+                    Cancel
+                </button>
+                {% if available_disks %}
+                <button type="button"
+                        class="btn btn-success"
+                        onclick="submitAttachRequest()">
+                    Submit for Approval
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Snapshot Modal -->
+<div class="modal fade" id="snapshotModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title"
+                    id="snapshotModalTitle">
+                    Snapshot Action
+                </h5>
+                <button type="button"
+                        class="close"
+                        data-dismiss="modal">
+                    <span>×</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="callout callout-warning">
+                    ⚠️ Requires
+                    <strong>2 approvals</strong>
+                    before executing.
+                </div>
+                <p id="snapshotModalBody"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-dismiss="modal">
+                    Cancel
+                </button>
+                <button type="button"
+                        class="btn btn-warning"
+                        onclick="submitSnapshotRequest()">
+                    Submit for Approval
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Overlay -->
+<div id="loadingOverlay"
+     style="display:none; position:fixed;
+            top:0; left:0; width:100%; height:100%;
+            background:rgba(0,0,0,0.5);
+            z-index:9999;
+            justify-content:center;
+            align-items:center;">
+    <div class="text-center text-white">
+        <div class="spinner-border mb-3"
+             style="width:3rem; height:3rem;"></div>
+        <h5 id="loadingText">Submitting...</h5>
+        <p id="loadingSubtext"
+           class="small text-white-50"></p>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const VM_NAME        = '{{ vm_name }}';
+    const RESOURCE_GROUP = '{{ resource_group }}';
+
+    function showAttachModal() {
+        $('#attachModal').modal('show');
+    }
+
+    function submitAttachRequest() {
+        const selected = document.getElementById(
+            'selectedDisk'
+        ).value;
+        if (!selected) {
+            alert('Please select a disk');
+            return;
+        }
+        const parts    = selected.split('|');
+        const diskName = parts[0];
+        const diskId   = parts[1];
+
+        $('#attachModal').modal('hide');
+        showLoading(
+            'Submitting disk attach approval...',
+            'Notifying approvers...'
+        );
+
+        const formData = new FormData();
+        formData.append('vm_name',        VM_NAME);
+        formData.append('resource_group', RESOURCE_GROUP);
+        formData.append('action',         'disk_attach');
+        formData.append('disk_name',      diskName);
+        formData.append('disk_id',        diskId);
+
+        submitApprovalRequest('/vm/disk/action', formData);
+    }
+
+    function requestDiskAction(action, diskName, diskId) {
+        if (!confirm(
+            `Request ${action.replace('_', ' ')} ` +
+            `for disk: ${diskName}?\n\n` +
+            `Requires 2 approvals.`
+        )) return;
+
+        showLoading(
+            'Submitting disk action...',
+            'Notifying approvers...'
+        );
+
+        const formData = new FormData();
+        formData.append('vm_name',        VM_NAME);
+        formData.append('resource_group', RESOURCE_GROUP);
+        formData.append('action',         action);
+        formData.append('disk_name',      diskName);
+        formData.append('disk_id',        diskId);
+
+        submitApprovalRequest('/vm/disk/action', formData);
+    }
+
+    let snapAction = '';
+    let snapTarget = '';
+
+    function requestSnapshot(name, action) {
+        snapAction = action;
+        snapTarget = name;
+
+        document.getElementById(
+            'snapshotModalTitle'
+        ).textContent = action === 'create'
+            ? `Create Snapshot of ${name}`
+            : `Delete Snapshot ${name}`;
+
+        document.getElementById(
+            'snapshotModalBody'
+        ).innerHTML = action === 'create'
+            ? `A snapshot of <strong>${name}</strong>
+               will be created.`
+            : `Snapshot <strong>${name}</strong>
+               will be permanently deleted.`;
+
+        $('#snapshotModal').modal('show');
+    }
+
+    function submitSnapshotRequest() {
+        $('#snapshotModal').modal('hide');
+        showLoading(
+            'Submitting snapshot approval...',
+            'Notifying approvers...'
+        );
+
+        const formData = new FormData();
+        formData.append('vm_name',        VM_NAME);
+        formData.append('resource_group', RESOURCE_GROUP);
+        formData.append('action',
+            snapAction === 'create'
+                ? 'snapshot_create'
+                : 'snapshot_delete'
+        );
+        formData.append('disk_name',     snapTarget);
+        formData.append('snapshot_name', snapTarget);
+
+        submitApprovalRequest(
+            '/vm/snapshot/action', formData
+        );
+    }
+
+    // ── Submit Approval Request — No Polling ─────────────────
+    // Industry Standard: Fire and forget
+    // User notified by email when approved/executed
+    function submitApprovalRequest(url, formData) {
+        fetch(url, { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+            hideLoading();
+
+            const type = data.success ? 'info'  : 'danger';
+            const icon = data.success ? 'check' : 'ban';
+
+            document.getElementById(
+                'alertBox'
+            ).innerHTML = `
+                <div class="alert alert-${type}
+                            alert-dismissible">
+                    <button type="button"
+                            class="close"
+                            data-dismiss="alert">×
+                    </button>
+                    <i class="icon fas fa-${icon}"></i>
+                    ${data.message}
+                    ${data.success ? `
+                    <br><br>
+                    <strong>What happens next:</strong><br>
+                    ✉️ Approvers notified by email<br>
+                    🎫 ServiceNow ticket created<br>
+                    📧 You will receive email when
+                       approved and executed<br>
+                    <a href="/admin/approvals"
+                       class="btn btn-sm btn-info mt-2">
+                        <i class="fas fa-clock me-1"></i>
+                        View Approval Status
+                    </a>` : ''}
+                </div>`;
+        })
+        .catch(err => {
+            hideLoading();
+            document.getElementById(
+                'alertBox'
+            ).innerHTML = `
+                <div class="alert alert-danger
+                            alert-dismissible">
+                    <button type="button"
+                            class="close"
+                            data-dismiss="alert">×
+                    </button>
+                    <i class="icon fas fa-ban"></i>
+                    ❌ Error: ${err.message}
+                </div>`;
+        });
+    }
+
+    function showLoading(text, subtext = '') {
+        document.getElementById(
+            'loadingText'
+        ).textContent = text;
+        document.getElementById(
+            'loadingSubtext'
+        ).textContent = subtext;
+        document.getElementById(
+            'loadingOverlay'
+        ).style.display = 'flex';
+    }
+
+    function hideLoading() {
+        document.getElementById(
+            'loadingOverlay'
+        ).style.display = 'none';
+    }
+</script>
+{% endblock %}

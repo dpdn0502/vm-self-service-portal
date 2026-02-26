@@ -1,0 +1,422 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Dashboard — VM Portal{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Dashboard</li>
+{% endblock %}
+
+{% block content %}
+
+{% if error %}
+<div class="alert alert-danger alert-dismissible">
+    <button type="button" class="close"
+            data-dismiss="alert">×</button>
+    <i class="icon fas fa-ban"></i>
+    Error loading VMs: {{ error }}
+</div>
+{% endif %}
+
+<!-- Summary Cards -->
+<div class="row">
+
+    <!-- Total VMs -->
+    <div class="col-lg-3 col-6">
+        <div class="small-box bg-info">
+            <div class="inner">
+                <h3>{{ total_vms }}</h3>
+                <p>Total Virtual Machines</p>
+            </div>
+            <div class="icon">
+                <i class="fas fa-server"></i>
+            </div>
+            <a href="/admin/vms"
+               class="small-box-footer">
+                View All
+                <i class="fas fa-arrow-circle-right"></i>
+            </a>
+        </div>
+    </div>
+    
+    <!-- Role Info Banner -->
+<div class="row mb-3">
+    <div class="col-12">
+        {% set role = session.get('portal_role', 'reader') %}
+        {% if role == 'reader' %}
+        <div class="callout callout-info">
+            <h5>
+                <i class="fas fa-info-circle me-2"></i>
+                👁️ You have Read Only access
+            </h5>
+            <p class="mb-0">
+                You can view VMs and audit logs
+                but cannot perform actions.
+                Contact your manager to request
+                elevated access.
+            </p>
+        </div>
+        {% elif role == 'operator' %}
+        <div class="callout callout-success">
+            <h5>
+                <i class="fas fa-check-circle me-2"></i>
+                ⚡ You have Operator access
+            </h5>
+            <p class="mb-0">
+                You can Start, Stop, Restart VMs
+                and create Snapshots.
+            </p>
+        </div>
+        {% elif role == 'contributor' %}
+        <div class="callout callout-warning">
+            <h5>
+                <i class="fas fa-tools me-2"></i>
+                🔧 You have Contributor access
+            </h5>
+            <p class="mb-0">
+                You can perform all VM operations
+                including Resize and Disk management.
+            </p>
+        </div>
+        {% elif role == 'admin' %}
+        <div class="callout callout-danger">
+            <h5>
+                <i class="fas fa-crown me-2"></i>
+                👑 You have Admin access
+            </h5>
+            <p class="mb-0">
+                Full access to all portal features.
+            </p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+
+    <!-- Running VMs -->
+    <div class="col-lg-3 col-6">
+        <div class="small-box bg-success">
+            <div class="inner">
+                <h3>{{ running_vms }}</h3>
+                <p>Running VMs</p>
+            </div>
+            <div class="icon">
+                <i class="fas fa-play-circle"></i>
+            </div>
+            <a href="/admin/vms"
+               class="small-box-footer">
+                View Running
+                <i class="fas fa-arrow-circle-right"></i>
+            </a>
+        </div>
+    </div>
+
+    <!-- Stopped VMs -->
+    <div class="col-lg-3 col-6">
+        <div class="small-box bg-danger">
+            <div class="inner">
+                <h3>{{ stopped_vms }}</h3>
+                <p>Stopped VMs</p>
+            </div>
+            <div class="icon">
+                <i class="fas fa-stop-circle"></i>
+            </div>
+            <a href="/admin/vms"
+               class="small-box-footer">
+                View Stopped
+                <i class="fas fa-arrow-circle-right"></i>
+            </a>
+        </div>
+    </div>
+
+    <!-- Pending Approvals -->
+    <div class="col-lg-3 col-6">
+        <div class="small-box bg-warning">
+            <div class="inner">
+                <h3>{{ pending_approvals }}</h3>
+                <p>Pending Approvals</p>
+            </div>
+            <div class="icon">
+                <i class="fas fa-clock"></i>
+            </div>
+            <a href="/admin/approvals"
+               class="small-box-footer">
+                View Approvals
+                <i class="fas fa-arrow-circle-right"></i>
+            </a>
+        </div>
+    </div>
+
+</div>
+
+<!-- Charts Row -->
+<div class="row">
+
+    <!-- Actions by Type -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-chart-pie me-2"></i>
+                    Actions by Type
+                </h3>
+            </div>
+            <div class="card-body">
+                <canvas id="actionTypeChart"
+                        height="200"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Activity Last 7 Days -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-chart-bar me-2"></i>
+                    Activity Last 7 Days
+                </h3>
+            </div>
+            <div class="card-body">
+                <canvas id="activityChart"
+                        height="200"></canvas>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- VM Table + Recent Activity -->
+<div class="row">
+
+    <!-- VM Status Table -->
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-server me-2"></i>
+                    Virtual Machines
+                </h3>
+                <div class="card-tools">
+                    <a href="/admin/vms"
+                       class="btn btn-primary btn-sm">
+                        View All
+                    </a>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-hover
+                               table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th>VM Name</th>
+                            <th>Status</th>
+                            <th>Size</th>
+                            <th>OS</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for vm in vms[:5] %}
+                        <tr>
+                            <td>
+                                <strong>
+                                    {{ vm.name }}
+                                </strong>
+                            </td>
+                            <td>
+                                {% if vm.power_state
+                                      == 'Running' %}
+                                    <span class="badge
+                                                 badge-success">
+                                        🟢 Running
+                                    </span>
+                                {% else %}
+                                    <span class="badge
+                                                 badge-danger">
+                                        🔴 {{ vm.power_state }}
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <small>
+                                    <code>{{ vm.size }}</code>
+                                </small>
+                            </td>
+                            <td>
+                                {% if vm.os_type == 'Linux' %}
+                                    <span class="badge
+                                                 badge-warning">
+                                        🐧 Linux
+                                    </span>
+                                {% else %}
+                                    <span class="badge
+                                                 badge-info">
+                                        🪟 Windows
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="/admin/vms/{{ vm.name }}/detail?rg={{ vm.resource_group }}"
+                                   class="btn btn-xs
+                                          btn-primary">
+                                    <i class="fas fa-cog"></i>
+                                    Manage
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-history me-2"></i>
+                    Recent Activity
+                </h3>
+            </div>
+            <div class="card-body p-0">
+                <ul class="list-group list-group-flush">
+                    {% for log in recent_logs %}
+                    <li class="list-group-item">
+                        <div class="d-flex
+                                    justify-content-between">
+                            <div>
+                                <strong>
+                                    {{ log.action | upper }}
+                                </strong>
+                                — {{ log.vm_name }}
+                                <br>
+                                <small class="text-muted">
+                                    {{ log.user_name }}
+                                </small>
+                            </div>
+                            <div>
+                                {% if log.status == 'success' %}
+                                    <span class="badge
+                                                 badge-success">
+                                        ✅
+                                    </span>
+                                {% else %}
+                                    <span class="badge
+                                                 badge-danger">
+                                        ❌
+                                    </span>
+                                {% endif %}
+                                <br>
+                                <small class="text-muted">
+                                    {{ log.timestamp.strftime(
+                                           '%H:%M'
+                                       ) }}
+                                </small>
+                            </div>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            <div class="card-footer text-center">
+                <a href="/admin/audit">
+                    View Full Audit Log
+                </a>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Actions by Type Chart
+    const actionData = {
+        labels: [
+            {% for item in actions_by_type %}
+                '{{ item.action | upper }}'
+                {% if not loop.last %},{% endif %}
+            {% endfor %}
+        ],
+        data: [
+            {% for item in actions_by_type %}
+                {{ item.count }}
+                {% if not loop.last %},{% endif %}
+            {% endfor %}
+        ]
+    };
+
+    new Chart(
+        document.getElementById('actionTypeChart'),
+        {
+            type: 'doughnut',
+            data: {
+                labels: actionData.labels,
+                datasets: [{
+                    data: actionData.data,
+                    backgroundColor: [
+                        '#0078d4', '#28a745',
+                        '#ffc107', '#dc3545',
+                        '#6f42c1', '#17a2b8',
+                        '#fd7e14', '#20c997'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        }
+    );
+
+    // Activity Chart
+    const activityData = {
+        labels: [
+            {% for item in actions_by_day %}
+                '{{ item.date }}'
+                {% if not loop.last %},{% endif %}
+            {% endfor %}
+        ],
+        data: [
+            {% for item in actions_by_day %}
+                {{ item.count }}
+                {% if not loop.last %},{% endif %}
+            {% endfor %}
+        ]
+    };
+
+    new Chart(
+        document.getElementById('activityChart'),
+        {
+            type: 'bar',
+            data: {
+                labels: activityData.labels.reverse(),
+                datasets: [{
+                    label:           'Actions',
+                    data:            activityData.data.reverse(),
+                    backgroundColor: '#0078d4'
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { stepSize: 1 }
+                    }
+                }
+            }
+        }
+    );
+</script>
+{% endblock %}

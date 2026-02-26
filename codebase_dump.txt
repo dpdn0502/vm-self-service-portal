@@ -1,3 +1,79 @@
+### file: codebasedump.py
+import os
+
+output = ""
+for filename in os.listdir("."):
+    if filename.endswith(".py"):
+        try:
+            with open(filename, "r", encoding="utf-8") as f:
+                output += f"### file: {filename}\n{f.read()}\n\n"
+        except Exception as e:
+            output += f"### file: {filename}\n[Could not read: {e}]\n\n"
+
+with open("codebase_dump.txt", "w", encoding="utf-8") as f:
+    f.write(output)
+
+print("Done!")
+
+### file: config.py
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+class Config:
+    # Flask
+    SECRET_KEY = os.getenv('FLASK_SECRET_KEY', 'fallback-secret')
+    DEBUG = os.environ.get('FLASK_DEBUG', 'True') == 'True'
+
+    # Azure Entra ID
+    CLIENT_ID = os.getenv('AZURE_CLIENT_ID')
+    CLIENT_SECRET = os.getenv('AZURE_CLIENT_SECRET')
+    TENANT_ID = os.getenv('AZURE_TENANT_ID')
+
+    # Azure Subscription
+    SUBSCRIPTION_ID = os.getenv('AZURE_SUBSCRIPTION_ID')
+
+    # MSAL
+    AUTHORITY = f"https://login.microsoftonline.com/{os.getenv('AZURE_TENANT_ID')}"
+    REDIRECT_URI = "http://localhost:5000/auth/callback"
+    SCOPE = ["User.Read"]
+
+    # Database — SQLite for now, Azure SQL later
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///vmportal.db'
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # ServiceNow — NEW
+    SNOW_INSTANCE_URL = os.getenv('SNOW_INSTANCE_URL')
+    SNOW_USERNAME = os.getenv('SNOW_USERNAME')
+    SNOW_PASSWORD = os.getenv('SNOW_PASSWORD')
+
+    # Approvers — notification emails
+    APPROVER1_EMAIL = os.getenv('APPROVER1_EMAIL')
+    APPROVER2_EMAIL = os.getenv('APPROVER2_EMAIL')
+
+    # Approvers — Azure login emails (for portal access)
+    APPROVER1_AZURE = os.getenv('APPROVER1_AZURE')
+    APPROVER2_AZURE = os.getenv('APPROVER2_AZURE')
+
+    # Email
+    MAIL_SERVER = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
+    MAIL_PORT = int(os.getenv('MAIL_PORT', 587))
+    MAIL_USE_TLS = True
+    MAIL_USERNAME = os.getenv('MAIL_USERNAME')
+    MAIL_PASSWORD = os.getenv('MAIL_PASSWORD')
+    MAIL_DEFAULT_SENDER = os.getenv('MAIL_DEFAULT_SENDER')
+
+
+
+
+
+
+
+
+
+
+### file: models.py
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 
@@ -107,3 +183,43 @@ class ApprovalRequest(db.Model):
             'approver2_status': self.approver2_status,
             'snow_ticket':      self.snow_ticket
         }
+
+
+### file: run.py
+from app import create_app
+
+app = create_app()
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+### file: smtptest.py
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+# Your GoDaddy details
+MAIL_SERVER  = 'smtpout.secureserver.net'
+MAIL_PORT    = 587
+MAIL_USER    = 'dineshch.babu@cloudfellow.co.uk'
+MAIL_PASS    = 'Dpdn@05021979'
+
+msg             = MIMEMultipart('alternative')
+msg['Subject']  = 'VM Portal Test Email'
+msg['From']     = MAIL_USER
+msg['To']       = MAIL_USER  # sending to yourself first
+msg.attach(MIMEText('''
+    <h2>VM Self-Service Portal</h2>
+    <p>Test email working correctly!</p>
+''', 'html'))
+
+try:
+    with smtplib.SMTP(MAIL_SERVER, MAIL_PORT) as server:
+        server.ehlo()
+        server.starttls()
+        server.login(MAIL_USER, MAIL_PASS)
+        server.sendmail(MAIL_USER, MAIL_USER, msg.as_string())
+    print("✅ Email sent successfully!")
+except Exception as e:
+    print(f"❌ Failed: {e}")
+

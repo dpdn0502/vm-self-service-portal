@@ -1,0 +1,546 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Audit & Reports — VM Portal{% endblock %}
+{% block page_title %}Audit & Reports{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Audit</li>
+{% endblock %}
+
+{% block content %}
+
+<!-- Export Button -->
+<div class="d-flex justify-content-end mb-3">
+    <a href="/vm/audit/export"
+       class="btn btn-success">
+        <i class="fas fa-download me-2"></i>
+        Export CSV
+    </a>
+</div>
+
+<!-- Summary Cards -->
+<div class="row" id="summaryCards">
+    <div class="col-lg-3 col-6">
+        <div class="small-box bg-info">
+            <div class="inner">
+                <h3 id="totalActions">—</h3>
+                <p>Total Actions</p>
+            </div>
+            <div class="icon">
+                <i class="fas fa-list"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-6">
+        <div class="small-box bg-success">
+            <div class="inner">
+                <h3 id="totalSuccess">—</h3>
+                <p>Successful</p>
+            </div>
+            <div class="icon">
+                <i class="fas fa-check"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-6">
+        <div class="small-box bg-danger">
+            <div class="inner">
+                <h3 id="totalFailed">—</h3>
+                <p>Failed</p>
+            </div>
+            <div class="icon">
+                <i class="fas fa-times"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-6">
+        <div class="small-box bg-warning">
+            <div class="inner">
+                <h3 id="totalFiltered">—</h3>
+                <p>Filtered Results</p>
+            </div>
+            <div class="icon">
+                <i class="fas fa-filter"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts -->
+<div class="row">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-chart-pie me-2"></i>
+                    Actions by Type
+                </h3>
+            </div>
+            <div class="card-body">
+                <canvas id="actionTypeChart"
+                        height="250"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-chart-pie me-2"></i>
+                    Success vs Failed
+                </h3>
+            </div>
+            <div class="card-body">
+                <canvas id="statusChart"
+                        height="250"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-chart-bar me-2"></i>
+                    Last 7 Days
+                </h3>
+            </div>
+            <div class="card-body">
+                <canvas id="activityChart"
+                        height="250"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Top Users -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-users me-2"></i>
+                    Top 5 Most Active Users
+                </h3>
+            </div>
+            <div class="card-body">
+                <canvas id="userChart"
+                        height="80"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-filter me-2"></i>
+            Filter Audit Log
+        </h3>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-2">
+                <div class="form-group">
+                    <label>Date From</label>
+                    <input type="date"
+                           class="form-control
+                                  form-control-sm"
+                           id="filterDateFrom">
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="form-group">
+                    <label>Date To</label>
+                    <input type="date"
+                           class="form-control
+                                  form-control-sm"
+                           id="filterDateTo">
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="form-group">
+                    <label>VM Name</label>
+                    <input type="text"
+                           class="form-control
+                                  form-control-sm"
+                           id="filterVm"
+                           placeholder="e.g. OMSDPDNVM1">
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="form-group">
+                    <label>User Email</label>
+                    <input type="text"
+                           class="form-control
+                                  form-control-sm"
+                           id="filterUser"
+                           placeholder="e.g. dinesh@...">
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="form-group">
+                    <label>Action Type</label>
+                    <select class="form-control
+                                   form-control-sm"
+                            id="filterAction">
+                        <option value="">All Actions</option>
+                        <option value="start">Start</option>
+                        <option value="stop">Stop</option>
+                        <option value="restart">Restart</option>
+                        <option value="resize">Resize</option>
+                        <option value="disk_attach">
+                            Disk Attach
+                        </option>
+                        <option value="disk_detach">
+                            Disk Detach
+                        </option>
+                        <option value="snapshot_create">
+                            Snapshot Create
+                        </option>
+                        <option value="snapshot_delete">
+                            Snapshot Delete
+                        </option>
+                    </select>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="form-group">
+                    <label>&nbsp;</label>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-primary
+                                       btn-sm w-100"
+                                onclick="applyFilters()">
+                            <i class="fas fa-search"></i>
+                            Filter
+                        </button>
+                        <button class="btn btn-secondary
+                                       btn-sm w-100"
+                                onclick="clearFilters()">
+                            <i class="fas fa-times"></i>
+                            Clear
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Audit Table -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-clipboard-list me-2"></i>
+            Audit Log
+        </h3>
+        <div class="card-tools">
+            <span class="badge badge-primary"
+                  id="resultCount">
+                Loading...
+            </span>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover table-sm mb-0">
+            <thead class="thead-dark">
+                <tr>
+                    <th>Timestamp</th>
+                    <th>User</th>
+                    <th>VM</th>
+                    <th>Action</th>
+                    <th>Status</th>
+                    <th>Message</th>
+                    <th>Ticket</th>
+                </tr>
+            </thead>
+            <tbody id="auditTableBody">
+                <tr>
+                    <td colspan="7"
+                        class="text-center p-4">
+                        Loading...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let actionTypeChart = null;
+    let statusChart     = null;
+    let activityChart   = null;
+    let userChart       = null;
+
+    function loadStats() {
+        fetch('/vm/audit/stats')
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById(
+                'totalActions'
+            ).textContent = data.totals.total;
+            document.getElementById(
+                'totalSuccess'
+            ).textContent = data.totals.success;
+            document.getElementById(
+                'totalFailed'
+            ).textContent = data.totals.failed;
+
+            drawActionTypeChart(data.actions_by_type);
+            drawStatusChart(data.actions_by_status);
+            drawActivityChart(data.actions_by_day);
+            drawUserChart(data.actions_by_user);
+        });
+    }
+
+    function drawActionTypeChart(data) {
+        const ctx = document.getElementById(
+            'actionTypeChart'
+        ).getContext('2d');
+        if (actionTypeChart) actionTypeChart.destroy();
+        actionTypeChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: data.map(
+                    d => d.action.toUpperCase()
+                ),
+                datasets: [{
+                    data: data.map(d => d.count),
+                    backgroundColor: [
+                        '#0078d4', '#28a745',
+                        '#ffc107', '#dc3545',
+                        '#6f42c1', '#17a2b8',
+                        '#fd7e14', '#20c997'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+    }
+
+    function drawStatusChart(data) {
+        const ctx = document.getElementById(
+            'statusChart'
+        ).getContext('2d');
+        if (statusChart) statusChart.destroy();
+        statusChart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: data.map(
+                    d => d.status.toUpperCase()
+                ),
+                datasets: [{
+                    data: data.map(d => d.count),
+                    backgroundColor: data.map(d =>
+                        d.status === 'success'
+                            ? '#28a745' : '#dc3545'
+                    )
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+    }
+
+    function drawActivityChart(data) {
+        const ctx = document.getElementById(
+            'activityChart'
+        ).getContext('2d');
+        if (activityChart) activityChart.destroy();
+        const reversed = [...data].reverse();
+        activityChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: reversed.map(d => d.date),
+                datasets: [{
+                    label:           'Actions',
+                    data:            reversed.map(
+                                         d => d.count
+                                     ),
+                    backgroundColor: '#0078d4'
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { stepSize: 1 }
+                    }
+                }
+            }
+        });
+    }
+
+    function drawUserChart(data) {
+        const ctx = document.getElementById(
+            'userChart'
+        ).getContext('2d');
+        if (userChart) userChart.destroy();
+        userChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: data.map(
+                    d => d.user || 'Unknown'
+                ),
+                datasets: [{
+                    label:           'Actions',
+                    data:            data.map(d => d.count),
+                    backgroundColor: '#6f42c1'
+                }]
+            },
+            options: {
+                responsive:  true,
+                indexAxis:   'y',
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        ticks: { stepSize: 1 }
+                    }
+                }
+            }
+        });
+    }
+
+    function loadAuditData(params = {}) {
+        const qs = new URLSearchParams(params).toString();
+        fetch(`/vm/audit/data?${qs}`)
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById(
+                'totalFiltered'
+            ).textContent = data.total;
+            document.getElementById(
+                'resultCount'
+            ).textContent = `${data.total} records`;
+
+            const tbody = document.getElementById(
+                'auditTableBody'
+            );
+
+            if (data.logs.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7"
+                            class="text-center p-4
+                                   text-muted">
+                            No records found
+                        </td>
+                    </tr>`;
+                return;
+            }
+
+            tbody.innerHTML = data.logs.map(log => `
+                <tr>
+                    <td>
+                        <small>${log.timestamp}</small>
+                    </td>
+                    <td>
+                        <small>${log.user_name || '—'}
+                        </small><br>
+                        <small class="text-muted">
+                            ${log.user_email || '—'}
+                        </small>
+                    </td>
+                    <td>
+                        <strong>${log.vm_name || '—'}
+                        </strong><br>
+                        <small class="text-muted">
+                            ${log.resource_group || '—'}
+                        </small>
+                    </td>
+                    <td>
+                        <span class="badge badge-primary">
+                            ${(log.action||'').toUpperCase()}
+                        </span>
+                    </td>
+                    <td>
+                        ${log.status === 'success'
+                            ? '<span class="badge badge-success">✅ Success</span>'
+                            : '<span class="badge badge-danger">❌ Failed</span>'
+                        }
+                    </td>
+                    <td>
+                        <small>${log.message || '—'}</small>
+                    </td>
+                    <td>
+                        ${log.snow_ticket
+                            ? `<a href="${log.snow_ticket_url}"
+                                  target="_blank"
+                                  class="badge badge-info">
+                                   🎫 ${log.snow_ticket}
+                               </a>`
+                            : '<span class="text-muted">—</span>'
+                        }
+                    </td>
+                </tr>
+            `).join('');
+        });
+    }
+
+    function applyFilters() {
+        const params = {};
+        const dateFrom = document.getElementById(
+            'filterDateFrom'
+        ).value;
+        const dateTo   = document.getElementById(
+            'filterDateTo'
+        ).value;
+        const vm       = document.getElementById(
+            'filterVm'
+        ).value;
+        const user     = document.getElementById(
+            'filterUser'
+        ).value;
+        const action   = document.getElementById(
+            'filterAction'
+        ).value;
+
+        if (dateFrom) params.date_from = dateFrom;
+        if (dateTo)   params.date_to   = dateTo;
+        if (vm)       params.vm        = vm;
+        if (user)     params.user      = user;
+        if (action)   params.action    = action;
+
+        loadAuditData(params);
+    }
+
+    function clearFilters() {
+        document.getElementById(
+            'filterDateFrom'
+        ).value = '';
+        document.getElementById(
+            'filterDateTo'
+        ).value = '';
+        document.getElementById(
+            'filterVm'
+        ).value = '';
+        document.getElementById(
+            'filterUser'
+        ).value = '';
+        document.getElementById(
+            'filterAction'
+        ).value = '';
+        loadAuditData();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadStats();
+        loadAuditData();
+    });
+</script>
+{% endblock %}

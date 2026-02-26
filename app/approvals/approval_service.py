@@ -39,6 +39,7 @@ def create_approval_request(user, vm_name, resource_group,
     """
     risk_level = RISK_LEVELS.get(action, 'medium')
 
+    # ── Create DB record ──────────────────────────────────────
     approval = ApprovalRequest(
         requester_email  = user.get('preferred_username'),
         requester_name   = user.get('name'),
@@ -48,32 +49,27 @@ def create_approval_request(user, vm_name, resource_group,
         action_details   = action_details,
         risk_level       = risk_level,
         status           = 'pending',
-
-        # Notification emails
         approver1_email  = Config.APPROVER1_EMAIL,
         approver2_email  = Config.APPROVER2_EMAIL,
-
-        # Azure login emails for portal access check
         approver1_azure  = Config.APPROVER1_AZURE,
         approver2_azure  = Config.APPROVER2_AZURE,
-
         approver1_status = 'pending',
         approver2_status = 'pending'
     )
     db.session.add(approval)
     db.session.commit()
 
-    # Notify approvers via email
+    # ── Send approval emails ──────────────────────────────────
     try:
         send_approval_email(approval)
     except Exception as e:
         print(f"⚠️ Email failed but approval created: {e}")
 
-    # Create ServiceNow ticket
+    # ── Create ServiceNow ticket ──────────────────────────────
     try:
         snow_result = create_incident(
             vm_name        = vm_name,
-            action         = f"APPROVAL REQUEST - {action}",
+            action         = action,
             user_name      = user.get('name'),
             user_email     = user.get('preferred_username'),
             resource_group = resource_group,
@@ -88,13 +84,28 @@ def create_approval_request(user, vm_name, resource_group,
             )
         )
 
-        if snow_result['success']:
-            approval.snow_ticket     = snow_result['incident_number']
-            approval.snow_ticket_url = snow_result['incident_url']
+        # ── Save ticket details including sys_id ──────────────
+        if snow_result.get('success'):
+            approval.snow_ticket      = snow_result.get(
+                                            'incident_number'
+                                        )
+            approval.snow_ticket_url  = snow_result.get(
+                                            'incident_url'
+                                        )
+            approval.snow_sys_id      = snow_result.get(
+                                            'incident_sys_id'
+                                        )
+            approval.snow_ticket_type = snow_result.get(
+                                            'ticket_type',
+                                            'change_request'
+                                        )
             db.session.commit()
+            print(f"✅ SNOW ticket saved: "
+                  f"{approval.snow_ticket}")
 
     except Exception as e:
-        print(f"⚠️ ServiceNow failed but approval created: {e}")
+        print(f"⚠️ ServiceNow failed but "
+              f"approval created: {e}")
 
     return approval
 
@@ -107,13 +118,15 @@ def send_approval_email(approval):
 
     subject = (
         f"[APPROVAL REQUIRED] "
-        f"{ACTION_LABELS.get(approval.action, approval.action)} "
-        f"— {approval.vm_name}"
+        f"{ACTION_LABELS.get(approval.action, approval.action)}"
+        f" — {approval.vm_name}"
     )
 
     body = f"""
     <html><body>
-    <h2 style="color:#0078d4">⚠️ VM Action Approval Required</h2>
+    <h2 style="color:#0078d4">
+        ⚠️ VM Action Approval Required
+    </h2>
     <table border="1" cellpadding="8"
            style="border-collapse:collapse; width:100%">
         <tr style="background:#f0f0f0">
@@ -176,8 +189,10 @@ def send_approval_email(approval):
                 msg['To']      = approver_email
                 msg.attach(MIMEText(body, 'html'))
 
-                with smtplib.SMTP(Config.MAIL_SERVER,
-                                  Config.MAIL_PORT) as server:
+                with smtplib.SMTP(
+                    Config.MAIL_SERVER,
+                    Config.MAIL_PORT
+                ) as server:
                     server.ehlo()
                     server.starttls()
                     server.login(
@@ -226,12 +241,12 @@ def process_approval_decision(approval_id, approver_email,
     now           = datetime.utcnow()
     decision_made = False
 
-    print(f"─── APPROVAL DECISION ──────────────────")
+    print(f"─── APPROVAL DECISION ──────────────────────")
     print(f"Approver:    {approver_email}")
     print(f"Decision:    {decision}")
     print(f"Approver1:   {approval.approver1_azure}")
     print(f"Approver2:   {approval.approver2_azure}")
-    print(f"────────────────────────────────────────")
+    print(f"────────────────────────────────────────────")
 
     # Check Approver 1
     if (approver_email == approval.approver1_azure and
@@ -267,7 +282,8 @@ def process_approval_decision(approval_id, approver_email,
     if not decision_made:
         return {
             'success': False,
-            'error':   'You are not an approver or already decided'
+            'error':   'You are not an approver '
+                       'or already decided'
         }
 
     db.session.commit()
@@ -295,7 +311,8 @@ def process_approval_decision(approval_id, approver_email,
     return {
         'success': True,
         'status':  'waiting',
-        'message': 'Decision recorded — waiting for second approver'
+        'message': 'Decision recorded — waiting for '
+                   'second approver'
     }
 
 
@@ -308,12 +325,12 @@ def execute_approved_action(approval):
         delete_snapshot
     )
 
-    print(f"─── EXECUTING ACTION ───────────────────")
+    print(f"─── EXECUTING ACTION ───────────────────────")
     print(f"Action:  {approval.action}")
     print(f"Details: {approval.action_details}")
     print(f"VM:      {approval.vm_name}")
     print(f"RG:      {approval.resource_group}")
-    print(f"────────────────────────────────────────")
+    print(f"────────────────────────────────────────────")
 
     try:
         # Parse action details into key value pairs
@@ -325,7 +342,7 @@ def execute_approved_action(approval):
 
         print(f"Parsed details: {details}")
 
-        # ── Resize ───────────────────────────────────────────
+        # ── Resize ────────────────────────────────────────────
         if approval.action == 'resize':
             parts    = approval.action_details.split('|')
             new_size = parts[1].strip()
@@ -382,19 +399,29 @@ def execute_approved_action(approval):
         approval.status = 'executed'
         db.session.commit()
 
-        # Create completion ServiceNow ticket
+        # ── Auto-close ServiceNow ticket ──────────────────────
         try:
-            create_incident(
-                vm_name        = approval.vm_name,
-                action         = approval.action,
-                user_name      = approval.requester_name,
-                user_email     = approval.requester_email,
-                resource_group = approval.resource_group,
-                status         = 'success',
-                message        = f"Approved action executed: {message}"
+            from app.servicenow.snow_service import (
+                update_ticket
             )
+
+            if approval.snow_ticket and \
+               approval.snow_sys_id:
+                update_ticket(
+                    sys_id      = approval.snow_sys_id,
+                    ticket_type = (
+                        approval.snow_ticket_type
+                        or 'change_request'
+                    ),
+                    status      = 'success',
+                    message     = message,
+                    user_name   = approval.requester_name
+                )
+                print(f"✅ Ticket auto-closed: "
+                      f"{approval.snow_ticket}")
+
         except Exception as e:
-            print(f"⚠️ ServiceNow notification failed: {e}")
+            print(f"⚠️ Auto-close failed: {e}")
 
         notify_requester(approval, 'executed', message)
 
@@ -426,7 +453,8 @@ def notify_requester(approval, status, message=''):
 
     status_text = {
         'rejected': '❌ Your request was rejected',
-        'executed': '✅ Your request was approved and executed'
+        'executed': '✅ Your request was approved '
+                    'and executed'
     }.get(status, status)
 
     subject = (
@@ -495,8 +523,10 @@ def notify_requester(approval, status, message=''):
             msg['To']      = approval.requester_email
             msg.attach(MIMEText(body, 'html'))
 
-            with smtplib.SMTP(Config.MAIL_SERVER,
-                              Config.MAIL_PORT) as server:
+            with smtplib.SMTP(
+                Config.MAIL_SERVER,
+                Config.MAIL_PORT
+            ) as server:
                 server.ehlo()
                 server.starttls()
                 server.login(
@@ -524,3 +554,5 @@ def notify_requester(approval, status, message=''):
 
     print(f"⚠️ All email attempts failed — "
           f"action was still successful")
+
+

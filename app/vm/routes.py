@@ -2,6 +2,11 @@
 from flask import (Blueprint, render_template, session,
                    redirect, url_for, request, jsonify,
                    Response)
+from app.vm.rbac_service import (
+    require_permission,
+    has_permission,
+    get_session_role
+)
 
 # Standard library imports
 import csv
@@ -82,7 +87,48 @@ def vm_action():
     print(f"VM:     {vm_name}")
     print(f"Action: {action}")
     print(f"────────────────────────────────────────")
+    
+   
+    # ── Permission Check ──────────────────────────────────────
+    if action in ['start', 'stop', 'restart'] and \
+       not has_permission('start'):
+        return jsonify({
+            'status':  'error',
+            'message': 'Access denied — '
+                       'Operator role required to '
+                       'perform this action'
+        })
 
+    if action == 'resize' and \
+       not has_permission('resize'):
+        return jsonify({
+            'status':  'error',
+            'message': 'Access denied — '
+                       'Contributor role required '
+                       'to resize VMs'
+        })
+    # ─────────────────────────────────────────────────────────
+
+    try:
+        if action == 'start':
+            message = start_vm(resource_group, vm_name)
+        elif action == 'stop':
+            message = stop_vm(resource_group, vm_name)
+        elif action == 'restart':
+            message = restart_vm(resource_group, vm_name)
+        else:
+            return jsonify({
+                'status':  'error',
+                'message': f'Unknown action: {action}'
+            })
+
+        status = 'success'
+
+    except Exception as e:
+        message = str(e)
+        status  = 'error'
+        print(f"❌ VM action failed: {e}")
+    
     try:
         if action == 'start':
             message = start_vm(resource_group, vm_name)

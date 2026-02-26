@@ -1,4 +1,4 @@
-from flask import Flask, session, redirect, url_for
+from flask import Flask, app, session, redirect, url_for
 from flask_session import Session
 from config import Config
 from models import db
@@ -21,6 +21,9 @@ def create_app():
 
     from app.approvals.routes import approvals_bp      # ← NEW
     app.register_blueprint(approvals_bp)
+
+    from app.admin.routes import admin_bp
+    app.register_blueprint(admin_bp)
 
     with app.app_context():
         db.create_all()

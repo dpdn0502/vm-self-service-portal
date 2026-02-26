@@ -5,7 +5,10 @@ from config import Config
 
 
 def get_auth():
-    return HTTPBasicAuth(Config.SNOW_USERNAME, Config.SNOW_PASSWORD)
+    return HTTPBasicAuth(
+        Config.SNOW_USERNAME,
+        Config.SNOW_PASSWORD
+    )
 
 
 def get_headers():
@@ -15,58 +18,411 @@ def get_headers():
     }
 
 
-def create_incident(vm_name, action, user_name, user_email,
-                    resource_group, status, message):
+# ── Ticket Type Mapping ───────────────────────────────────────
+# Industry Standard ITIL ticket classification
+
+TICKET_TYPE = {
+    # Service Requests — standard catalogue items
+    'start':           'service_request',
+    'stop':            'service_request',
+    'restart':         'service_request',
+    'snapshot_create': 'service_request',
+
+    # Change Requests — infrastructure changes
+    'resize':          'change_request',
+    'disk_attach':     'change_request',
+    'disk_detach':     'change_request',
+    'snapshot_delete': 'change_request',
+    'os_disk_swap':    'change_request',
+    'backup':          'change_request',
+    'tag_update':      'change_request',
+    'timezone_change': 'change_request',
+    'patch_apply':     'change_request',
+    'dns_update':      'change_request',
+    'decommission':    'change_request',
+
+    # Incidents — failures and errors
+    'error':           'incident',
+    'failed':          'incident'
+}
+
+ACTION_LABELS = {
+    'start':           'VM Start Operation',
+    'stop':            'VM Stop/Deallocate Operation',
+    'restart':         'VM Restart Operation',
+    'resize':          'VM Resize (SKU Change)',
+    'disk_attach':     'Data Disk Attach',
+    'disk_detach':     'Data Disk Detach',
+    'snapshot_create': 'Disk Snapshot Creation',
+    'snapshot_delete': 'Disk Snapshot Deletion',
+    'os_disk_swap':    'OS Disk Swap',
+    'backup':          'Backup Management',
+    'tag_update':      'VM Tag Modification',
+    'timezone_change': 'Timezone Change',
+    'patch_apply':     'Patch Management',
+    'dns_update':      'DNS Record Update',
+    'decommission':    'VM Decommission Request'
+}
+
+# Risk levels for change requests
+RISK_LEVELS = {
+    'resize':          'Moderate',
+    'disk_attach':     'Moderate',
+    'disk_detach':     'Moderate',
+    'snapshot_delete': 'Moderate',
+    'os_disk_swap':    'High',
+    'decommission':    'High',
+    'dns_update':      'High',
+    'patch_apply':     'Low',
+    'tag_update':      'Low',
+    'timezone_change': 'Low'
+}
+
+
+# ── Main Entry Point ──────────────────────────────────────────
+
+def create_incident(vm_name, action, user_name,
+                    user_email, resource_group,
+                    status, message):
     """
-    Creates a ServiceNow Incident for every VM action
-    Returns the incident number e.g. INC0012345
+    Main function called from routes and approval_service
+    Automatically routes to correct SNOW ticket type
+    based on ITIL classification
     """
 
-    action_descriptions = {
-        'start':   'VM Start Operation',
-        'stop':    'VM Stop/Deallocate Operation',
-        'restart': 'VM Restart Operation'
-    }
+    # Determine ticket type
+    # Check if this is an error/failure first
+    if status in ['error', 'failed', 'failure']:
+        ticket_type = 'incident'
+    else:
+        ticket_type = TICKET_TYPE.get(
+            action, 'incident'
+        )
+
+    print(f"─── SERVICENOW ─────────────────────────")
+    print(f"Action:      {action}")
+    print(f"Ticket Type: {ticket_type.upper()}")
+    print(f"Status:      {status}")
+    print(f"────────────────────────────────────────")
+
+    # Route to correct function
+    if ticket_type == 'change_request':
+        return create_change_request(
+            vm_name, action, user_name,
+            user_email, resource_group,
+            status, message
+        )
+    elif ticket_type == 'service_request':
+        return create_service_request(
+            vm_name, action, user_name,
+            user_email, resource_group,
+            status, message
+        )
+    else:
+        return create_incident_ticket(
+            vm_name, action, user_name,
+            user_email, resource_group,
+            status, message
+        )
+
+
+# ── Incident (INC) ────────────────────────────────────────────
+
+def create_incident_ticket(vm_name, action, user_name,
+                            user_email, resource_group,
+                            status, message):
+    """
+    Creates INC for failures and errors
+    State: New (1) for failures
+           Resolved (6) for success
+    """
 
     # State: 1=New, 2=In Progress, 6=Resolved
     snow_state = '6' if status == 'success' else '1'
 
     payload = {
         'short_description': (
-            f"VM Action: {action.upper()} - {vm_name}"
+            f"VM Action: {action.upper()} — {vm_name}"
         ),
-        'description': (
-            f"VM Management Action Performed\n"
-            f"{'─' * 40}\n"
-            f"Action:         {action_descriptions.get(action, action)}\n"
-            f"VM Name:        {vm_name}\n"
-            f"Resource Group: {resource_group}\n"
-            f"Performed By:   {user_name} ({user_email})\n"
-            f"Result:         {status.upper()}\n"
-            f"Message:        {message}\n"
-            f"Timestamp:      {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n"
-            f"Portal:         VM Self-Service Portal\n"
+        'description': build_description(
+            vm_name, action, user_name,
+            user_email, resource_group,
+            status, message
         ),
-        'category':     'Cloud Operations',
-        'subcategory':  'Virtual Machine',
-        'caller_id':    'admin',
-        'impact':       '3',
-        'urgency':      '3',
-        'state':        snow_state,
-
-        # Mandatory fields when state is Resolved (6)
-        'close_code':   'Solved (Permanently)',
-        'close_notes':  (
-            f"VM {action.upper()} action "
-            f"{'completed successfully' if status == 'success' else 'failed'} "
-            f"via VM Self-Service Portal by {user_name}"
+        'category':    'Cloud Operations',
+        'subcategory': 'Virtual Machine',
+        'caller_id':   'admin',
+        'impact':      '3',
+        'urgency':     '3',
+        'state':       snow_state,
+        'close_code':  'Solved (Permanently)',
+        'close_notes': build_close_notes(
+            action, status, user_name
         ),
-
-        'comments': "Auto-generated by VM Self-Service Portal"
+        'comments':    'Auto-generated by VM Self-Service Portal'
     }
 
+    return post_to_snow(
+        'incident', payload, 'INC'
+    )
+
+
+# ── Change Request (CHG) ──────────────────────────────────────
+
+def create_change_request(vm_name, action, user_name,
+                           user_email, resource_group,
+                           status, message):
+    """
+    Creates CHG for infrastructure changes
+    Type: Normal change
+    Risk: Based on action type
+    State: New → In Progress → Closed
+    """
+
+    risk  = RISK_LEVELS.get(action, 'Moderate')
+    label = ACTION_LABELS.get(action, action)
+
+    # Change state
+    # -5=New, -1=Assess, 0=Authorize
+    #  1=Scheduled, 2=Implement, 3=Review, 4=Closed
+    if status == 'success':
+        snow_state   = '3'   # Review
+        close_code   = 'successful'
+        close_notes  = build_close_notes(
+            action, status, user_name
+        )
+    elif status == 'pending':
+        snow_state  = '-5'   # New
+        close_code  = ''
+        close_notes = ''
+    else:
+        snow_state  = '2'    # Implement (failed)
+        close_code  = 'unsuccessful'
+        close_notes = f"Action failed: {message}"
+
+    payload = {
+        'short_description': (
+            f"[VM Portal] {label} — {vm_name}"
+        ),
+        'description': build_description(
+            vm_name, action, user_name,
+            user_email, resource_group,
+            status, message
+        ),
+        'category':          'Cloud Infrastructure',
+        'type':              'normal',
+        'risk':              risk,
+        'impact':            '3',
+        'priority':          '3',
+        'state':             snow_state,
+        'requested_by':      'admin',
+        'assignment_group':  'Cloud Operations',
+        'implementation_plan': (
+            f"Execute {label} on VM {vm_name} "
+            f"via VM Self-Service Portal"
+        ),
+        'backout_plan': (
+            f"Revert {label} on VM {vm_name} "
+            f"using Azure Portal if required"
+        ),
+        'test_plan': (
+            f"Verify VM {vm_name} is operational "
+            f"after {label} completes"
+        ),
+        'comments': (
+            'Auto-generated by VM Self-Service Portal'
+        )
+    }
+
+    if close_code:
+        payload['close_code']  = close_code
+        payload['close_notes'] = close_notes
+
+    return post_to_snow(
+        'change_request', payload, 'CHG'
+    )
+
+
+# ── Service Request (REQ) ─────────────────────────────────────
+
+def create_service_request(vm_name, action, user_name,
+                            user_email, resource_group,
+                            status, message):
+    """
+    Creates REQ for standard catalogue operations
+    State: Closed Complete on success
+           Open on failure
+    """
+
+    label = ACTION_LABELS.get(action, action)
+
+    # Request state
+    # 1=Open, 3=Closed Complete, 4=Closed Incomplete
+    if status == 'success':
+        snow_state = '3'   # Closed Complete
+    elif status == 'pending':
+        snow_state = '1'   # Open
+    else:
+        snow_state = '4'   # Closed Incomplete
+
+    payload = {
+        'short_description': (
+            f"[VM Portal] {label} — {vm_name}"
+        ),
+        'description': build_description(
+            vm_name, action, user_name,
+            user_email, resource_group,
+            status, message
+        ),
+        'category':         'Cloud Operations',
+        'impact':           '3',
+        'urgency':          '3',
+        'state':            snow_state,
+        'requested_for':    'admin',
+        'assignment_group': 'Cloud Operations',
+        'comments': (
+            'Auto-generated by VM Self-Service Portal'
+        )
+    }
+
+    return post_to_snow(
+        'sc_request', payload, 'REQ'
+    )
+
+
+# ── Update Ticket (Auto-Close) ────────────────────────────────
+
+def update_ticket(sys_id, ticket_type,
+                  status, message, user_name):
+    """
+    Updates existing ticket when action completes
+    Used for auto-close after approval execution
+    Industry Standard: ITIL auto-close on completion
+    """
+
+    if ticket_type == 'change_request':
+        if status == 'success':
+            payload = {
+                'state':       '3',   # Review
+                'close_code':  'successful',
+                'close_notes': (
+                    f"Change completed successfully "
+                    f"by {user_name} via VM Portal. "
+                    f"{message}"
+                )
+            }
+        else:
+            payload = {
+                'state':    '2',   # Implement
+                'comments': f"Action failed: {message}"
+            }
+
+    elif ticket_type == 'sc_request':
+        if status == 'success':
+            payload = {
+                'state':    '3',   # Closed Complete
+                'comments': (
+                    f"Request fulfilled successfully. "
+                    f"{message}"
+                )
+            }
+        else:
+            payload = {
+                'state':    '4',   # Closed Incomplete
+                'comments': f"Request failed: {message}"
+            }
+
+    else:
+        # Incident
+        if status == 'success':
+            payload = {
+                'state':       '6',   # Resolved
+                'close_code':  'Solved (Permanently)',
+                'close_notes': (
+                    f"Resolved by VM Portal. {message}"
+                )
+            }
+        else:
+            payload = {
+                'state':    '2',   # In Progress
+                'comments': f"Action failed: {message}"
+            }
+
     try:
-        url = f"{Config.SNOW_INSTANCE_URL}/api/now/table/incident"
+        url = (
+            f"{Config.SNOW_INSTANCE_URL}"
+            f"/api/now/table/{ticket_type}/{sys_id}"
+        )
+
+        response = requests.patch(
+            url,
+            json=payload,
+            auth=get_auth(),
+            headers=get_headers(),
+            timeout=10
+        )
+
+        if response.status_code == 200:
+            print(f"✅ SNOW ticket updated: {sys_id}")
+            return {'success': True}
+        else:
+            print(f"⚠️ SNOW update failed: "
+                  f"{response.status_code}")
+            return {'success': False}
+
+    except Exception as e:
+        print(f"⚠️ SNOW update error: {e}")
+        return {'success': False, 'error': str(e)}
+
+
+# ── Shared Helpers ────────────────────────────────────────────
+
+def build_description(vm_name, action, user_name,
+                       user_email, resource_group,
+                       status, message):
+    """Builds consistent ticket description"""
+    label = ACTION_LABELS.get(action, action)
+
+    return (
+        f"VM Management Action\n"
+        f"{'─' * 40}\n"
+        f"Action:         {label}\n"
+        f"VM Name:        {vm_name}\n"
+        f"Resource Group: {resource_group}\n"
+        f"Performed By:   {user_name} ({user_email})\n"
+        f"Result:         {status.upper()}\n"
+        f"Message:        {message}\n"
+        f"Timestamp:      "
+        f"{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}"
+        f" UTC\n"
+        f"Portal:         VM Self-Service Portal\n"
+        f"{'─' * 40}\n"
+        f"Auto-generated by VM Self-Service Portal\n"
+        f"Azure Innovation Team — Uniper"
+    )
+
+
+def build_close_notes(action, status, user_name):
+    """Builds consistent close notes"""
+    label = ACTION_LABELS.get(action, action)
+    result = 'completed successfully' \
+             if status == 'success' else 'failed'
+    return (
+        f"{label} {result} via VM Self-Service Portal "
+        f"by {user_name}. Auto-closed by portal."
+    )
+
+
+def post_to_snow(table, payload, prefix):
+    """
+    Posts to ServiceNow table API
+    Returns standardised result dict
+    """
+    try:
+        url = (
+            f"{Config.SNOW_INSTANCE_URL}"
+            f"/api/now/table/{table}"
+        )
 
         response = requests.post(
             url,
@@ -77,41 +433,69 @@ def create_incident(vm_name, action, user_name, user_email,
         )
 
         if response.status_code == 201:
-            incident_number = response.json()['result']['number']
-            incident_sys_id = response.json()['result']['sys_id']
+            result     = response.json()['result']
+            number     = result.get('number', '')
+            sys_id     = result.get('sys_id', '')
+            ticket_url = build_ticket_url(table, sys_id)
+
+            print(f"✅ SNOW {prefix} created: {number}")
+
             return {
                 'success':         True,
-                'incident_number': incident_number,
-                'incident_sys_id': incident_sys_id,
-                'incident_url':    (
-                    f"{Config.SNOW_INSTANCE_URL}"
-                    f"/nav_to.do?uri=incident.do?sys_id={incident_sys_id}"
-                )
+                'incident_number': number,
+                'incident_sys_id': sys_id,
+                'incident_url':    ticket_url,
+                'ticket_type':     table
             }
         else:
+            print(f"❌ SNOW failed: "
+                  f"{response.status_code}: "
+                  f"{response.text}")
             return {
                 'success': False,
-                'error':   f"ServiceNow returned {response.status_code}: {response.text}"
+                'error':   (
+                    f"ServiceNow returned "
+                    f"{response.status_code}: "
+                    f"{response.text}"
+                )
             }
 
     except requests.exceptions.ConnectionError:
+        print("❌ Cannot connect to ServiceNow")
         return {
             'success': False,
-            'error':   'Cannot connect to ServiceNow — check your PDI is awake'
+            'error':   'Cannot connect to ServiceNow'
         }
     except requests.exceptions.Timeout:
+        print("❌ ServiceNow request timed out")
         return {
             'success': False,
             'error':   'ServiceNow request timed out'
         }
     except Exception as e:
+        print(f"❌ ServiceNow error: {e}")
         return {
             'success': False,
             'error':   str(e)
         }
 
 
+def build_ticket_url(table, sys_id):
+    """Builds correct URL for each ticket type"""
+    table_urls = {
+        'incident':       'incident.do',
+        'change_request': 'change_request.do',
+        'sc_request':     'sc_request.do'
+    }
+    page = table_urls.get(table, 'incident.do')
+    return (
+        f"{Config.SNOW_INSTANCE_URL}"
+        f"/nav_to.do?uri={page}?sys_id={sys_id}"
+    )
+
+
 def test_connection():
+    """Tests ServiceNow connectivity"""
     try:
         url = (
             f"{Config.SNOW_INSTANCE_URL}"
@@ -135,3 +519,5 @@ def test_connection():
             }
     except Exception as e:
         return {'success': False, 'error': str(e)}
+
+

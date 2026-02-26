@@ -1,0 +1,471 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Virtual Machines — VM Portal{% endblock %}
+{% block page_title %}Virtual Machines{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">
+    Virtual Machines
+</li>
+{% endblock %}
+
+{% block content %}
+
+{% if error %}
+<div class="alert alert-danger alert-dismissible">
+    <button type="button"
+            class="close"
+            data-dismiss="alert">×</button>
+    <i class="icon fas fa-ban"></i>
+    {{ error }}
+</div>
+{% endif %}
+
+<div id="alertBox"></div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-server me-2"></i>
+            All Virtual Machines
+            <span class="badge badge-primary ms-2">
+                {{ vms|length }}
+            </span>
+        </h3>
+        <div class="card-tools">
+            <button onclick="location.reload()"
+                    class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-sync"></i>
+                Refresh
+            </button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0"
+               id="vmTable">
+            <thead class="thead-dark">
+                <tr>
+                    <th>VM Name</th>
+                    <th>Status</th>
+                    <th>OS</th>
+                    <th>Size</th>
+                    <th>Location</th>
+                    <th>Resource Group</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for vm in vms %}
+                <tr id="row-{{ vm.name }}">
+                    <td>
+                        <strong>{{ vm.name }}</strong>
+                    </td>
+                    <td>
+                        {% if vm.power_state == 'Running' %}
+                            <span class="badge badge-success">
+                                <i class="fas fa-circle"></i>
+                                Running
+                            </span>
+                        {% elif vm.power_state == 'Stopped'
+                             or vm.power_state
+                                == 'Deallocated' %}
+                            <span class="badge badge-danger">
+                                <i class="fas fa-circle"></i>
+                                {{ vm.power_state }}
+                            </span>
+                        {% else %}
+                            <span class="badge badge-secondary">
+                                {{ vm.power_state }}
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if vm.os_type == 'Linux' %}
+                            <span class="badge badge-warning">
+                                <i class="fab fa-linux"></i>
+                                Linux
+                            </span>
+                        {% else %}
+                            <span class="badge badge-info">
+                                <i class="fab fa-windows"></i>
+                                Windows
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <code>{{ vm.size }}</code>
+                    </td>
+                    <td>{{ vm.location }}</td>
+                    <td>
+                        <small>{{ vm.resource_group }}</small>
+                    </td>
+                    <td>
+                        <!-- Start/Stop/Restart — Operator+ -->
+                        {% if session.get('portal_role') in
+                              ['operator', 'contributor',
+                               'admin'] %}
+                            {% if vm.power_state == 'Running' %}
+                                <button
+                                    class="btn btn-warning
+                                           btn-xs me-1"
+                                    onclick="confirmAction(
+                                        'stop',
+                                        '{{ vm.name }}',
+                                        '{{ vm.resource_group }}')">
+                                    <i class="fas fa-stop"></i>
+                                    Stop
+                                </button>
+                                <button
+                                    class="btn btn-info
+                                           btn-xs me-1"
+                                    onclick="confirmAction(
+                                        'restart',
+                                        '{{ vm.name }}',
+                                        '{{ vm.resource_group }}')">
+                                    <i class="fas fa-redo"></i>
+                                    Restart
+                                </button>
+                            {% else %}
+                                <button
+                                    class="btn btn-success
+                                           btn-xs me-1"
+                                    onclick="confirmAction(
+                                        'start',
+                                        '{{ vm.name }}',
+                                        '{{ vm.resource_group }}')">
+                                    <i class="fas fa-play"></i>
+                                    Start
+                                </button>
+                            {% endif %}
+                        {% endif %}
+
+                        <!-- Resize — Contributor+ only -->
+                        {% if session.get('portal_role') in
+                              ['contributor', 'admin'] %}
+                            <button
+                                class="btn btn-secondary
+                                       btn-xs me-1"
+                                onclick="requestResize(
+                                    '{{ vm.name }}',
+                                    '{{ vm.resource_group }}',
+                                    '{{ vm.size }}')">
+                                <i class="fas
+                                    fa-expand-arrows-alt"></i>
+                                Resize
+                            </button>
+                        {% endif %}
+
+                        <!-- Manage / View based on role -->
+                        {% if session.get('portal_role')
+                               == 'reader' %}
+                            <a href="/admin/vms/{{ vm.name }}/detail?rg={{ vm.resource_group }}"
+                               class="btn btn-secondary
+                                      btn-xs">
+                                <i class="fas fa-eye"></i>
+                                View
+                            </a>
+                            <span class="badge
+                                         badge-secondary">
+                                👁️ View Only
+                            </span>
+                        {% else %}
+                            <a href="/admin/vms/{{ vm.name }}/detail?rg={{ vm.resource_group }}"
+                               class="btn btn-primary
+                                      btn-xs">
+                                <i class="fas fa-cog"></i>
+                                Manage
+                            </a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Confirm Modal -->
+<div class="modal fade" id="confirmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title">
+                    ⚠️ Confirm Action
+                </h5>
+                <button type="button"
+                        class="close"
+                        data-dismiss="modal">
+                    <span>×</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>You are about to
+                    <strong id="modalAction"></strong>
+                    VM:
+                </p>
+                <h5 id="modalVmName"
+                    class="text-primary"></h5>
+                <p class="text-muted small">
+                    A ServiceNow ticket will be
+                    auto created for this action.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-dismiss="modal">
+                    Cancel
+                </button>
+                <button type="button"
+                        class="btn btn-danger"
+                        onclick="executeAction()">
+                    Confirm
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Resize Modal -->
+<div class="modal fade" id="resizeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-secondary text-white">
+                <h5 class="modal-title">
+                    📐 Request VM Resize
+                </h5>
+                <button type="button"
+                        class="close text-white"
+                        data-dismiss="modal">
+                    <span>×</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Resizing VM:
+                    <strong id="resizeVmName"
+                            class="text-primary"></strong>
+                </p>
+                <p>Current size:
+                    <code id="resizeCurrentSize"></code>
+                </p>
+                <div class="callout callout-warning">
+                    ⚠️ Requires
+                    <strong>2 approvals</strong>
+                    before executing.
+                </div>
+                <div class="form-group">
+                    <label>
+                        <strong>New VM Size</strong>
+                    </label>
+                    <input type="text"
+                           class="form-control"
+                           id="resizeNewSize"
+                           placeholder="e.g. Standard_D4s_v3">
+                    <small class="form-text text-muted">
+                        Common: Standard_B2s, Standard_B4ms,
+                        Standard_D2s_v3, Standard_D4s_v3
+                    </small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-dismiss="modal">
+                    Cancel
+                </button>
+                <button type="button"
+                        class="btn btn-warning"
+                        onclick="submitResizeRequest()">
+                    Submit for Approval
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Overlay -->
+<div id="loadingOverlay"
+     style="display:none; position:fixed;
+            top:0; left:0; width:100%; height:100%;
+            background:rgba(0,0,0,0.5);
+            z-index:9999;
+            justify-content:center;
+            align-items:center;">
+    <div class="text-center text-white">
+        <div class="spinner-border mb-3"
+             style="width:3rem; height:3rem;"></div>
+        <h5 id="loadingText">Processing...</h5>
+        <p id="loadingSubtext"
+           class="small text-white-50"></p>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentAction = '';
+    let currentVmName = '';
+    let currentRg     = '';
+    let resizeVmName  = '';
+    let resizeRg      = '';
+    let resizeCurrent = '';
+
+    // ── Start/Stop/Restart ────────────────────────────────────
+    function confirmAction(action, vmName, rg) {
+        currentAction = action;
+        currentVmName = vmName;
+        currentRg     = rg;
+
+        document.getElementById(
+            'modalAction'
+        ).textContent = action.toUpperCase();
+        document.getElementById(
+            'modalVmName'
+        ).textContent = vmName;
+
+        $('#confirmModal').modal('show');
+    }
+
+    function executeAction() {
+        $('#confirmModal').modal('hide');
+
+        document.getElementById(
+            'loadingText'
+        ).textContent = 'Processing action...';
+        document.getElementById(
+            'loadingSubtext'
+        ).textContent = 'Creating ServiceNow ticket...';
+        document.getElementById(
+            'loadingOverlay'
+        ).style.display = 'flex';
+
+        const formData = new FormData();
+        formData.append('vm_name',        currentVmName);
+        formData.append('resource_group', currentRg);
+        formData.append('action',         currentAction);
+
+        fetch('/vm/action', {
+            method: 'POST',
+            body:   formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById(
+                'loadingOverlay'
+            ).style.display = 'none';
+
+            const type = data.status === 'success'
+                ? 'success' : 'danger';
+            const icon = data.status === 'success'
+                ? 'check' : 'ban';
+
+            document.getElementById(
+                'alertBox'
+            ).innerHTML = `
+                <div class="alert alert-${type}
+                            alert-dismissible">
+                    <button type="button"
+                            class="close"
+                            data-dismiss="alert">×
+                    </button>
+                    <i class="icon fas fa-${icon}"></i>
+                    ${data.message}
+                </div>`;
+
+            if (data.status === 'success') {
+                setTimeout(() => location.reload(), 3000);
+            }
+        });
+    }
+
+    // ── Resize ────────────────────────────────────────────────
+    function requestResize(vmName, rg, currentSize) {
+        resizeVmName  = vmName;
+        resizeRg      = rg;
+        resizeCurrent = currentSize;
+
+        document.getElementById(
+            'resizeVmName'
+        ).textContent = vmName;
+        document.getElementById(
+            'resizeCurrentSize'
+        ).textContent = currentSize;
+        document.getElementById(
+            'resizeNewSize'
+        ).value = '';
+
+        $('#resizeModal').modal('show');
+    }
+
+    function submitResizeRequest() {
+        const newSize = document.getElementById(
+            'resizeNewSize'
+        ).value.trim();
+
+        if (!newSize) {
+            alert('Please enter a new VM size');
+            return;
+        }
+
+        $('#resizeModal').modal('hide');
+
+        document.getElementById(
+            'loadingText'
+        ).textContent = 'Submitting approval request...';
+        document.getElementById(
+            'loadingSubtext'
+        ).textContent = 'Notifying approvers...';
+        document.getElementById(
+            'loadingOverlay'
+        ).style.display = 'flex';
+
+        const formData = new FormData();
+        formData.append('vm_name',        resizeVmName);
+        formData.append('resource_group', resizeRg);
+        formData.append('action',         'resize');
+        formData.append('action_details',
+            `${resizeCurrent} | ${newSize}`
+        );
+
+        fetch('/approvals/request', {
+            method: 'POST',
+            body:   formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById(
+                'loadingOverlay'
+            ).style.display = 'none';
+
+            const type = data.success ? 'info' : 'danger';
+            const icon = data.success ? 'check' : 'ban';
+
+            document.getElementById(
+                'alertBox'
+            ).innerHTML = `
+                <div class="alert alert-${type}
+                            alert-dismissible">
+                    <button type="button"
+                            class="close"
+                            data-dismiss="alert">×
+                    </button>
+                    <i class="icon fas fa-${icon}"></i>
+                    ${data.message}
+                    ${data.success ? `
+                    <br><br>
+                    <strong>What happens next:</strong><br>
+                    ✉️ Approvers notified by email<br>
+                    🎫 ServiceNow ticket created<br>
+                    📧 You will receive email when complete
+                    <br>
+                    <a href="/admin/approvals"
+                       class="btn btn-sm btn-info mt-2">
+                        <i class="fas fa-clock me-1"></i>
+                        View Approval Status
+                    </a>` : ''}
+                </div>`;
+        });
+    }
+</script>
+{% endblock %}
