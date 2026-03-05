@@ -184,11 +184,13 @@ def decide(approval_id):
     print(f"Decision: {decision}")
     print(f"Approval ID: {approval_id}")
 
-    result = process_approval_decision(
+    is_admin = session.get('portal_role') == 'admin'
+    result   = process_approval_decision(
         approval_id,
         approver_email,
         decision,
-        comment
+        comment,
+        is_admin=is_admin
     )
 
     return jsonify(result)

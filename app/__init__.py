@@ -25,6 +25,9 @@ def create_app():
     from app.admin.routes import admin_bp
     app.register_blueprint(admin_bp)
 
+    from app.decommission.routes import decom_bp
+    app.register_blueprint(decom_bp)
+
     with app.app_context():
         db.create_all()
 

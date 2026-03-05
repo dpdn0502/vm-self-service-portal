@@ -8,7 +8,7 @@ from models import db, ApprovalRequest
 from app.servicenow.snow_service import create_incident
 
 
-# Risk classification
+# Risk classification — drives approval urgency and SNOW priority
 RISK_LEVELS = {
     'resize':          'medium',
     'disk_attach':     'medium',
@@ -16,10 +16,21 @@ RISK_LEVELS = {
     'os_disk_swap':    'high',
     'backup':          'high',
     'snapshot_create': 'medium',
-    'snapshot_delete': 'high'
+    'snapshot_delete': 'high',
+    'tag_update':      'medium',   # tag add/change — governance impact
+    'tag_delete':      'high',     # tag removal — could break automation
+    'tag_bulk_update':  'medium',   # bulk tag set — governance impact
+    'timezone_change':  'medium',   # OS timezone change
+    'dns_hostname_change': 'medium', # VM hostname change via Run Command
+    'dns_server_update':   'medium', # NIC custom DNS server list
+    'dns_suffix_change':   'medium', # OS DNS search suffixes
+    'patch_assess':        'low',    # trigger guest patch assessment
+    'patch_install':       'high',   # install patches on a running VM
+    'patch_mode_set':      'medium', # configure AUM patch mode
+    'patch_reboot':        'medium', # reboot VM for pending patches
 }
 
-# Human readable action names
+# Human-readable action names shown in emails and portal
 ACTION_LABELS = {
     'resize':          'Resize VM (SKU Change)',
     'disk_attach':     'Attach Data Disk',
@@ -27,7 +38,18 @@ ACTION_LABELS = {
     'os_disk_swap':    'OS Disk Swap',
     'backup':          'Backup Management',
     'snapshot_create': 'Create Disk Snapshot',
-    'snapshot_delete': 'Delete Disk Snapshot'
+    'snapshot_delete': 'Delete Disk Snapshot',
+    'tag_update':      'Update VM Tag',
+    'tag_delete':      'Delete VM Tag',
+    'tag_bulk_update': 'Bulk Update VM Tags',
+    'timezone_change':     'Change VM Timezone',
+    'dns_hostname_change': 'Change VM Hostname',
+    'dns_server_update':   'Update NIC DNS Servers',
+    'dns_suffix_change':   'Update DNS Search Suffixes',
+    'patch_assess':        'Trigger Patch Assessment',
+    'patch_install':       'Install VM Patches',
+    'patch_mode_set':      'Set VM Patch Mode',
+    'patch_reboot':        'Reboot VM for Pending Patches',
 }
 
 
@@ -174,7 +196,7 @@ def send_approval_email(approval):
     </a>
     <p style="color:grey; font-size:12px">
         Requires <b>2 approvals</b> before executing.<br>
-        VM Self-Service Portal — Auto generated
+        IaaS Self-Service Tool — Auto generated
     </p>
     </body></html>
     """
@@ -219,7 +241,8 @@ def send_approval_email(approval):
 
 
 def process_approval_decision(approval_id, approver_email,
-                               decision, comment):
+                               decision, comment,
+                               is_admin=False):
     """
     approver_email is Azure login email from session
     Checks against approver1_azure and approver2_azure
@@ -279,6 +302,31 @@ def process_approval_decision(approval_id, approver_email,
         decision_made              = True
         print(f"✅ Approver 2 recorded: {decision}")
 
+    if not decision_made and is_admin:
+        # Admin override — fill whichever approver slot is still pending
+        now = datetime.utcnow()
+        if approval.approver1_status == 'pending':
+            approval.approver1_status  = decision
+            approval.approver1_comment = comment
+            approval.approver1_at      = now
+            approval.approver1_name    = approver_email
+            decision_made              = True
+            print(f"✅ Admin override — Approver 1 recorded: {decision}")
+            # If both slots same person or approver2 already decided
+            if approval.approver2_status == 'pending':
+                approval.approver2_status  = decision
+                approval.approver2_comment = comment
+                approval.approver2_at      = now
+                approval.approver2_name    = approver_email
+                print(f"✅ Admin override — Approver 2 also recorded: {decision}")
+        elif approval.approver2_status == 'pending':
+            approval.approver2_status  = decision
+            approval.approver2_comment = comment
+            approval.approver2_at      = now
+            approval.approver2_name    = approver_email
+            decision_made              = True
+            print(f"✅ Admin override — Approver 2 recorded: {decision}")
+
     if not decision_made:
         return {
             'success': False,
@@ -323,6 +371,10 @@ def execute_approved_action(approval):
     from app.vm.snapshot_service import (
         create_snapshot,
         delete_snapshot
+    )
+    # Import tag service for tag_update / tag_delete / tag_bulk_update
+    from app.vm.tag_service import (
+        update_vm_tag, delete_vm_tag, bulk_update_vm_tags
     )
 
     print(f"─── EXECUTING ACTION ───────────────────────")
@@ -393,6 +445,145 @@ def execute_approved_action(approval):
                 snapshot_name
             )
 
+        # ── Tag Update — set/add a single tag key ─────────────
+        elif approval.action == 'tag_update':
+            tag_key   = details.get('Key', '')
+            tag_value = details.get('Value', '')
+            message   = update_vm_tag(
+                approval.resource_group,
+                approval.vm_name,
+                tag_key,
+                tag_value
+            )
+
+        # ── Tag Bulk Update — set multiple tags at once ───────
+        elif approval.action == 'tag_bulk_update':
+            import json
+            # action_details stored as JSON string: {"Key": "Value", ...}
+            tags_dict = json.loads(approval.action_details)
+            message   = bulk_update_vm_tags(
+                approval.resource_group,
+                approval.vm_name,
+                tags_dict
+            )
+
+        # ── Tag Delete — remove a single tag key ──────────────
+        elif approval.action == 'tag_delete':
+            tag_key = details.get('Key', '')
+            message = delete_vm_tag(
+                approval.resource_group,
+                approval.vm_name,
+                tag_key
+            )
+
+        # ── Timezone Change — sets OS timezone via Run Command ─
+        elif approval.action == 'timezone_change':
+            from app.vm.timezone_service import set_vm_timezone
+            os_type     = details.get('OS', 'Linux')
+            timezone_id = details.get('Timezone', 'UTC')
+            message     = set_vm_timezone(
+                approval.resource_group,
+                approval.vm_name,
+                os_type,
+                timezone_id
+            )
+
+        # ── DNS Hostname Change — Run Command ──────────────────
+        elif approval.action == 'dns_hostname_change':
+            from app.vm.dns_service import change_vm_hostname
+            os_type      = details.get('OS', 'Linux')
+            new_hostname = details.get('Hostname', '')
+            message      = change_vm_hostname(
+                approval.resource_group,
+                approval.vm_name,
+                os_type,
+                new_hostname
+            )
+
+        # ── DNS Server Update — NIC API ────────────────────────
+        elif approval.action == 'dns_server_update':
+            from app.vm.dns_service import update_nic_dns_servers
+            nic_name    = details.get('NIC', '')
+            nic_rg      = details.get('NIC_RG',
+                              approval.resource_group)
+            servers_raw = details.get('Servers', '')
+            # Empty string means reset to Azure default
+            dns_servers = [
+                s.strip()
+                for s in servers_raw.split(',')
+                if s.strip()
+            ]
+            message = update_nic_dns_servers(
+                nic_rg, nic_name, dns_servers
+            )
+
+        # ── DNS Search Suffix — Run Command ───────────────────
+        elif approval.action == 'dns_suffix_change':
+            from app.vm.dns_service import update_dns_search_suffix
+            os_type      = details.get('OS', 'Linux')
+            suffixes_raw = details.get('Suffixes', '')
+            suffixes     = [
+                s.strip()
+                for s in suffixes_raw.split(',')
+                if s.strip()
+            ]
+            message = update_dns_search_suffix(
+                approval.resource_group,
+                approval.vm_name,
+                os_type,
+                suffixes
+            )
+
+        # ── Patch Assessment — begin_assess_patches ────────────
+        elif approval.action == 'patch_assess':
+            from app.vm.patch_service import trigger_patch_assessment
+            message = trigger_patch_assessment(
+                approval.resource_group,
+                approval.vm_name
+            )
+
+        # ── Patch Install — begin_install_patches ──────────────
+        elif approval.action == 'patch_install':
+            from app.vm.patch_service import install_patches
+            os_type         = details.get('OS', 'Linux')
+            class_raw       = details.get('Classifications', '')
+            reboot_setting  = details.get(
+                'Reboot', 'IfRequired'
+            )
+            classifications = [
+                c.strip()
+                for c in class_raw.split(',')
+                if c.strip()
+            ]
+            message = install_patches(
+                approval.resource_group,
+                approval.vm_name,
+                os_type,
+                classifications,
+                reboot_setting
+            )
+
+        # ── Patch Mode Set — configure AUM patch mode ──────────
+        elif approval.action == 'patch_mode_set':
+            from app.vm.patch_service import set_patch_mode
+            os_type    = details.get('OS', 'Linux')
+            patch_mode = details.get('Mode', 'AutomaticByPlatform')
+            message    = set_patch_mode(
+                approval.resource_group,
+                approval.vm_name,
+                os_type,
+                patch_mode
+            )
+
+        # ── Patch Reboot — restart VM for pending patches ───────
+        elif approval.action == 'patch_reboot':
+            from app.vm.azure_service import restart_vm
+            message = restart_vm(
+                approval.resource_group,
+                approval.vm_name
+            )
+            message = f"VM '{approval.vm_name}' restarted for patch application. {message}"
+
         else:
             message = f"Action {approval.action} executed"
 
@@ -458,7 +649,7 @@ def notify_requester(approval, status, message=''):
     }.get(status, status)
 
     subject = (
-        f"[VM Portal] {status_text} — "
+        f"[IaaS Portal] {status_text} — "
         f"{approval.vm_name}"
     )
 
@@ -510,7 +701,7 @@ def notify_requester(approval, status, message=''):
         View Portal
     </a>
     <p style="color:grey; font-size:12px">
-        VM Self-Service Portal — Auto generated
+        IaaS Self-Service Tool — Auto generated
     </p>
     </body></html>
     """

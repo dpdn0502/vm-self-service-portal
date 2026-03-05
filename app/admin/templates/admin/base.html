@@ -5,7 +5,7 @@
     <meta name="viewport"
           content="width=device-width, initial-scale=1">
     <title>
-        {% block title %}VM Self-Service Portal{% endblock %}
+        {% block title %}IaaS Self-Service Tool{% endblock %}
     </title>
 
     <!-- Google Font -->
@@ -128,7 +128,7 @@
             <i class="fas fa-cloud ms-3 me-2
                       text-primary"></i>
             <span class="brand-text">
-                VM Portal
+                IaaS Portal
             </span>
         </a>
 
@@ -221,6 +221,63 @@
                         </a>
                     </li>
 
+                    <!-- Tag Management — CAF governance tags -->
+                    <li class="nav-item">
+                        <a href="/admin/tags"
+                           class="nav-link
+                           {% if '/admin/tags'
+                                  in request.path %}
+                               active
+                           {% endif %}">
+                            <i class="nav-icon fas fa-tags"></i>
+                            <p>Tag Management</p>
+                        </a>
+                    </li>
+
+                    <!-- Patch Compliance -->
+                    <li class="nav-item">
+                        <a href="/admin/patches"
+                           class="nav-link
+                           {% if '/admin/patches'
+                                  in request.path %}
+                               active
+                           {% endif %}">
+                            <i class="nav-icon fas fa-shield-alt"></i>
+                            <p>Patch Compliance</p>
+                        </a>
+                    </li>
+
+                    <!-- Performance Metrics -->
+                    <li class="nav-item">
+                        <a href="/admin/performance"
+                           class="nav-link
+                           {% if '/admin/performance'
+                                  in request.path %}
+                               active
+                           {% endif %}">
+                            <i class="nav-icon fas fa-chart-line"></i>
+                            <p>Performance Metrics</p>
+                        </a>
+                    </li>
+
+                    <!-- Decommission Queue -->
+                    <li class="nav-item">
+                        <a href="/admin/decommission"
+                           class="nav-link
+                           {% if '/admin/decommission'
+                                  in request.path %}
+                               active
+                           {% endif %}">
+                            <i class="nav-icon fas fa-trash-alt"></i>
+                            <p>
+                                Decommission
+                                <span class="badge badge-danger right"
+                                      id="decomBadge">
+                                </span>
+                            </p>
+                        </a>
+                    </li>
+
                     <!-- Audit -->
                     <li class="nav-item">
                         <a href="/admin/audit"
@@ -301,7 +358,7 @@
     <!-- Footer -->
     <footer class="main-footer">
         <strong>
-            VM Self-Service Portal
+            IaaS Self-Service Tool
         </strong>
         <div class="float-right d-none d-sm-inline-block">
             <b>Azure Innovation Team</b>

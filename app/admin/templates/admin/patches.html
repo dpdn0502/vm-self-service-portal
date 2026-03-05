@@ -1,0 +1,571 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Patch Compliance — IaaS Portal{% endblock %}
+{% block page_title %}🔧 Patch Compliance Dashboard{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Patch Compliance</li>
+{% endblock %}
+
+{% block content %}
+
+{% if error %}
+<div class="alert alert-danger alert-dismissible">
+    <button type="button" class="close"
+            data-dismiss="alert">×</button>
+    <i class="icon fas fa-ban"></i>
+    <strong>Error fetching patch data:</strong> {{ error }}
+</div>
+{% endif %}
+
+<!-- ── AUM Not Configured Banner ───────────────────────────── -->
+{% if aum_not_enabled == total_vms and total_vms > 0 %}
+<div class="callout callout-warning">
+    <h5><i class="fas fa-exclamation-triangle me-2"></i>
+        Azure Update Manager Not Configured</h5>
+    <p class="mb-1">
+        None of your VMs have Azure Update Manager (AUM) enabled.
+        AUM requires <code>Patch Mode = AutomaticByPlatform</code>
+        on the VM's OS profile.
+    </p>
+    <p class="mb-0">
+        <strong>To enable AUM:</strong> Navigate to a VM's detail page
+        → Patch Management card → Set Patch Mode →
+        select <em>AutomaticByPlatform</em>.
+        Once enabled, assessment and install actions will be available
+        automatically — no portal code changes required.
+    </p>
+</div>
+{% elif aum_not_enabled > 0 %}
+<div class="callout callout-info">
+    <h5><i class="fas fa-info-circle me-2"></i>
+        {{ aum_not_enabled }} VM(s) Not AUM-Enabled</h5>
+    <p class="mb-0">
+        {{ aum_enabled_count }} of {{ total_vms }} VMs have AUM enabled.
+        Visit each VM's detail page to set Patch Mode to
+        <em>AutomaticByPlatform</em> for the remaining VMs.
+    </p>
+</div>
+{% endif %}
+
+<!-- ── Summary Stat Cards ─────────────────────────────────── -->
+<div class="row">
+    <!-- Total VMs -->
+    <div class="col-lg-3 col-6">
+        <div class="small-box bg-info">
+            <div class="inner">
+                <h3>{{ total_vms }}</h3>
+                <p>Total VMs</p>
+            </div>
+            <div class="icon">
+                <i class="fas fa-server"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- AUM Enabled -->
+    <div class="col-lg-3 col-6">
+        <div class="small-box bg-success">
+            <div class="inner">
+                <h3>{{ aum_enabled_count }}</h3>
+                <p>AUM Enabled</p>
+            </div>
+            <div class="icon">
+                <i class="fas fa-shield-alt"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- AUM Not Enabled -->
+    <div class="col-lg-3 col-6">
+        <div class="small-box bg-warning">
+            <div class="inner">
+                <h3>{{ aum_not_enabled }}</h3>
+                <p>AUM Not Enabled</p>
+            </div>
+            <div class="icon">
+                <i class="fas fa-exclamation-triangle"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Auto-Assessment -->
+    <div class="col-lg-3 col-6">
+        <div class="small-box bg-primary">
+            <div class="inner">
+                <h3>{{ auto_assess_count }}</h3>
+                <p>Auto-Assessment On</p>
+            </div>
+            <div class="icon">
+                <i class="fas fa-search"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Ring Distribution + AUM Coverage ──────────────────── -->
+<div class="row">
+    <!-- Patch Ring Distribution -->
+    <div class="col-md-4">
+        <div class="card card-outline card-primary">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-circle-notch me-2"></i>
+                    Patch Ring Distribution
+                </h3>
+            </div>
+            <div class="card-body p-0">
+                <ul class="list-group list-group-flush">
+                    {% if rings %}
+                        {% for ring, count in rings.items() | sort %}
+                        <li class="list-group-item
+                                   d-flex justify-content-between
+                                   align-items-center">
+                            {% if ring == 'Unassigned' %}
+                                <span class="text-muted">
+                                    <i class="fas fa-question-circle
+                                              me-2"></i>
+                                    Unassigned
+                                </span>
+                                <span class="badge badge-secondary
+                                             badge-pill">
+                                    {{ count }}
+                                </span>
+                            {% elif ring in ['Ring0', 'Canary',
+                                             'Early'] %}
+                                <span class="text-danger">
+                                    <i class="fas fa-dot-circle
+                                              me-2"></i>
+                                    {{ ring }}
+                                </span>
+                                <span class="badge badge-danger
+                                             badge-pill">
+                                    {{ count }}
+                                </span>
+                            {% elif ring in ['Ring1', 'Test',
+                                             'QA'] %}
+                                <span class="text-warning">
+                                    <i class="fas fa-dot-circle
+                                              me-2"></i>
+                                    {{ ring }}
+                                </span>
+                                <span class="badge badge-warning
+                                             badge-pill">
+                                    {{ count }}
+                                </span>
+                            {% elif ring in ['Ring2', 'Staging',
+                                             'UAT'] %}
+                                <span class="text-primary">
+                                    <i class="fas fa-dot-circle
+                                              me-2"></i>
+                                    {{ ring }}
+                                </span>
+                                <span class="badge badge-primary
+                                             badge-pill">
+                                    {{ count }}
+                                </span>
+                            {% else %}
+                                <span class="text-success">
+                                    <i class="fas fa-dot-circle
+                                              me-2"></i>
+                                    {{ ring }}
+                                </span>
+                                <span class="badge badge-success
+                                             badge-pill">
+                                    {{ count }}
+                                </span>
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    {% else %}
+                        <li class="list-group-item text-muted
+                                   text-center">
+                            <i class="fas fa-info-circle me-1"></i>
+                            No VMs found
+                        </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- AUM Coverage Progress -->
+    <div class="col-md-8">
+        <div class="card card-outline card-success">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-tasks me-2"></i>
+                    AUM Coverage
+                </h3>
+            </div>
+            <div class="card-body">
+                {% if total_vms > 0 %}
+                    {% set aum_pct =
+                        ((aum_enabled_count / total_vms) * 100) | int %}
+                    {% set assess_pct =
+                        ((auto_assess_count / total_vms) * 100) | int %}
+
+                    <p class="mb-1">
+                        <strong>AUM Enabled</strong>
+                        <span class="float-right
+                                     text-{{ 'success' if aum_pct >= 75
+                                             else ('warning' if aum_pct >= 40
+                                             else 'danger') }}">
+                            {{ aum_enabled_count }}/{{ total_vms }}
+                            ({{ aum_pct }}%)
+                        </span>
+                    </p>
+                    <div class="progress mb-4" style="height:20px;">
+                        <div class="progress-bar
+                            bg-{{ 'success' if aum_pct >= 75
+                                  else ('warning' if aum_pct >= 40
+                                  else 'danger') }}"
+                             style="width:{{ aum_pct }}%">
+                            {{ aum_pct }}%
+                        </div>
+                    </div>
+
+                    <p class="mb-1">
+                        <strong>Auto-Assessment Enabled</strong>
+                        <span class="float-right
+                                     text-{{ 'success' if assess_pct >= 75
+                                             else ('warning' if assess_pct >= 40
+                                             else 'danger') }}">
+                            {{ auto_assess_count }}/{{ total_vms }}
+                            ({{ assess_pct }}%)
+                        </span>
+                    </p>
+                    <div class="progress" style="height:20px;">
+                        <div class="progress-bar
+                            bg-{{ 'success' if assess_pct >= 75
+                                  else ('warning' if assess_pct >= 40
+                                  else 'danger') }}"
+                             style="width:{{ assess_pct }}%">
+                            {{ assess_pct }}%
+                        </div>
+                    </div>
+
+                    <div class="callout callout-info mt-4 mb-0">
+                        <i class="fas fa-lightbulb me-1"></i>
+                        <strong>Target:</strong>
+                        100% AUM coverage ensures all VMs receive
+                        automatic patch assessments and can have
+                        patches installed via Azure Update Manager.
+                    </div>
+                {% else %}
+                    <p class="text-muted text-center py-3">
+                        <i class="fas fa-server me-2"></i>
+                        No VMs found in subscription.
+                    </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── All VMs Patch Status — Grouped Tree ─────────────────── -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-sitemap me-2"></i>
+            All VMs — Patch Status
+        </h3>
+        <div class="card-tools d-flex align-items-center"
+             style="gap:6px; flex-wrap:wrap;">
+            <!-- Filter controls -->
+            <select id="filterAum"
+                    class="form-control form-control-sm"
+                    onchange="applyFilters()"
+                    style="width:160px">
+                <option value="">All AUM States</option>
+                <option value="enabled">AUM Enabled</option>
+                <option value="disabled">AUM Not Enabled</option>
+            </select>
+            <select id="filterOs"
+                    class="form-control form-control-sm"
+                    onchange="applyFilters()"
+                    style="width:130px">
+                <option value="">All OS</option>
+                <option value="windows">Windows</option>
+                <option value="linux">Linux</option>
+            </select>
+            <select id="filterRing"
+                    class="form-control form-control-sm"
+                    onchange="applyFilters()"
+                    style="width:140px">
+                <option value="">All Rings</option>
+                {% for ring in rings.keys() | sort %}
+                <option value="{{ ring | lower }}">{{ ring }}</option>
+                {% endfor %}
+            </select>
+            <button id="btnExpandAll"
+                    class="btn btn-sm btn-outline-secondary"
+                    onclick="toggleAll(true)"
+                    title="Expand all groups">
+                <i class="fas fa-plus-square mr-1"></i> Expand All
+            </button>
+            <button id="btnCollapseAll"
+                    class="btn btn-sm btn-outline-secondary"
+                    onclick="toggleAll(false)"
+                    title="Collapse all groups">
+                <i class="fas fa-minus-square mr-1"></i> Collapse All
+            </button>
+            <button onclick="location.reload()"
+                    class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-sync"></i>
+            </button>
+        </div>
+    </div>
+    <div class="card-body p-2" id="patchTree">
+
+        {% if not grouped %}
+        <p class="text-muted text-center py-4">
+            <i class="fas fa-server fa-2x mb-3 d-block"></i>
+            No VMs found.
+        </p>
+        {% endif %}
+
+        {% for sub_id, sub in grouped.items() %}
+        <!-- ── Subscription level ─────────────────────────── -->
+        <div class="mb-2 patch-sub-block">
+            <button class="btn btn-link d-flex align-items-center
+                           text-left w-100 py-2 px-2 patch-toggle"
+                    data-toggle="collapse"
+                    data-target="#psub-{{ sub.id }}"
+                    aria-expanded="true"
+                    style="font-weight:700; color:#212529;
+                           text-decoration:none; font-size:0.95rem;
+                           border-bottom:1px solid #dee2e6;">
+                <i class="fas fa-cloud text-primary mr-2"></i>
+                <span class="text-truncate" style="max-width:350px;"
+                      title="{{ sub_id }}">
+                    Subscription: {{ sub_id }}
+                </span>
+                <span class="badge badge-primary ml-2">
+                    {% set s_count = namespace(n=0) %}
+                    {% for rg_name, rg in sub.rgs.items() %}
+                        {% set s_count.n = s_count.n + rg.vms|length %}
+                    {% endfor %}
+                    {{ s_count.n }} VM{{ 's' if s_count.n != 1 }}
+                </span>
+                <span class="ml-auto mr-1 text-muted small
+                             toggle-indicator">
+                    <i class="fas fa-minus-square"></i>
+                </span>
+            </button>
+
+            <div id="psub-{{ sub.id }}" class="collapse show">
+
+                {% for rg_name, rg in sub.rgs.items() %}
+                <!-- ── Resource Group level ──────────────── -->
+                <div class="ml-3 mb-1 patch-rg-block">
+                    <button class="btn btn-link d-flex
+                                   align-items-center text-left
+                                   w-100 py-1 px-2 patch-toggle"
+                            data-toggle="collapse"
+                            data-target="#prg-{{ rg.id }}"
+                            aria-expanded="true"
+                            style="font-weight:600; color:#495057;
+                                   text-decoration:none;
+                                   font-size:0.875rem;">
+                        <i class="fas fa-layer-group
+                                  text-secondary mr-2"></i>
+                        {{ rg_name }}
+                        <span class="badge badge-light border ml-2">
+                            {{ rg.vms|length }}
+                            VM{{ 's' if rg.vms|length != 1 }}
+                        </span>
+                        <span class="ml-auto mr-1 text-muted small
+                                     toggle-indicator">
+                            <i class="fas fa-minus-square"></i>
+                        </span>
+                    </button>
+
+                    <div id="prg-{{ rg.id }}" class="collapse show">
+                        <table class="table table-sm table-hover mb-1">
+                            <thead class="thead-light">
+                                <tr>
+                                    <th>VM Name</th>
+                                    <th>OS</th>
+                                    <th>Patch Mode</th>
+                                    <th>AUM</th>
+                                    <th>Auto-Assess</th>
+                                    <th>Ring</th>
+                                    <th>Power</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for vm in rg.vms %}
+                                <tr class="patch-vm-row"
+                                    data-aum="{{ 'enabled' if vm.aum_enabled else 'disabled' }}"
+                                    data-os="{{ vm.os_type | lower }}"
+                                    data-ring="{{ (vm.ring or 'unassigned') | lower }}">
+                                    <td>
+                                        <strong>{{ vm.vm_name }}</strong>
+                                    </td>
+                                    <td>
+                                        {% if vm.os_type == 'Windows' %}
+                                            <span class="badge badge-info">
+                                                <i class="fab fa-windows"></i>
+                                                Windows
+                                            </span>
+                                        {% elif vm.os_type == 'Linux' %}
+                                            <span class="badge badge-secondary">
+                                                <i class="fab fa-linux"></i>
+                                                Linux
+                                            </span>
+                                        {% else %}
+                                            <span class="badge badge-light text-muted">
+                                                {{ vm.os_type }}
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <small class="{{ 'text-success' if vm.patch_mode == 'AutomaticByPlatform' else 'text-muted' }}">
+                                            {{ vm.patch_mode or '—' }}
+                                        </small>
+                                    </td>
+                                    <td>
+                                        {% if vm.aum_enabled %}
+                                            <span class="badge badge-success">
+                                                <i class="fas fa-check"></i> Ready
+                                            </span>
+                                        {% else %}
+                                            <span class="badge badge-warning">
+                                                <i class="fas fa-exclamation"></i> Off
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        {% if vm.auto_assess %}
+                                            <i class="fas fa-check-circle text-success"
+                                               title="Auto-assessment on"></i>
+                                        {% else %}
+                                            <i class="fas fa-times-circle text-danger"
+                                               title="Auto-assessment off"></i>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if vm.ring %}
+                                            {% if vm.ring in ['Ring0','Canary','Early'] %}
+                                                <span class="badge badge-danger">{{ vm.ring }}</span>
+                                            {% elif vm.ring in ['Ring1','Test','QA'] %}
+                                                <span class="badge badge-warning">{{ vm.ring }}</span>
+                                            {% elif vm.ring in ['Ring2','Staging','UAT'] %}
+                                                <span class="badge badge-primary">{{ vm.ring }}</span>
+                                            {% else %}
+                                                <span class="badge badge-success">{{ vm.ring }}</span>
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="text-muted small">Unassigned</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if vm.power_state == 'running' %}
+                                            <span class="badge badge-success">
+                                                <i class="fas fa-circle fa-xs"></i> Running
+                                            </span>
+                                        {% elif vm.power_state in ['deallocated','stopped'] %}
+                                            <span class="badge badge-secondary">
+                                                <i class="fas fa-circle fa-xs"></i>
+                                                {{ vm.power_state | title }}
+                                            </span>
+                                        {% else %}
+                                            <span class="badge badge-light text-muted">
+                                                {{ vm.power_state or '—' }}
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <a href="/admin/vms/{{ vm.vm_name }}/detail?rg={{ vm.resource_group }}"
+                                           class="btn btn-default btn-xs border"
+                                           title="Manage VM">
+                                            <i class="fas fa-cog"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div><!-- /rg collapse -->
+                </div>
+                {% endfor %}
+
+            </div><!-- /sub collapse -->
+        </div>
+        {% endfor %}
+
+    </div><!-- /card-body patchTree -->
+    <div class="card-footer">
+        <small class="text-muted">
+            <i class="fas fa-info-circle me-1"></i>
+            <strong>AUM Ready</strong> = Patch Mode set to
+            <code>AutomaticByPlatform</code>.
+            Set the <code>PatchRing</code> tag on each VM to track
+            deployment rings.
+        </small>
+    </div>
+</div>
+
+<script>
+// ── Toggle arrow icon when collapse opens/closes ───────────────
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.patch-toggle').forEach(function (btn) {
+        var targetId = btn.getAttribute('data-target');
+        var target   = document.querySelector(targetId);
+        if (!target) return;
+
+        $(target).on('show.bs.collapse', function () {
+            btn.querySelector('.toggle-indicator i').className =
+                'fas fa-minus-square';
+        }).on('hide.bs.collapse', function () {
+            btn.querySelector('.toggle-indicator i').className =
+                'fas fa-plus-square';
+        });
+    });
+});
+
+// ── Expand / Collapse All ──────────────────────────────────────
+function toggleAll(expand) {
+    document.querySelectorAll('#patchTree .collapse').forEach(function (el) {
+        $(el).collapse(expand ? 'show' : 'hide');
+    });
+}
+
+// ── Filter rows across all tables ─────────────────────────────
+function applyFilters() {
+    var aumFilter  = document.getElementById('filterAum').value;
+    var osFilter   = document.getElementById('filterOs').value;
+    var ringFilter = document.getElementById('filterRing').value;
+
+    document.querySelectorAll('.patch-vm-row').forEach(function (row) {
+        var aum  = row.getAttribute('data-aum')  || '';
+        var os   = row.getAttribute('data-os')   || '';
+        var ring = row.getAttribute('data-ring') || '';
+
+        var ok = (!aumFilter  || aum  === aumFilter)
+              && (!osFilter   || os   === osFilter)
+              && (!ringFilter || ring === ringFilter);
+
+        row.style.display = ok ? '' : 'none';
+    });
+
+    // Show/hide RG blocks that have no visible rows
+    document.querySelectorAll('.patch-rg-block').forEach(function (rgBlock) {
+        var hasVisible = Array.from(
+            rgBlock.querySelectorAll('.patch-vm-row')
+        ).some(function (r) { return r.style.display !== 'none'; });
+        rgBlock.style.display = hasVisible ? '' : 'none';
+    });
+
+    // Show/hide Sub blocks that have no visible RG blocks
+    document.querySelectorAll('.patch-sub-block').forEach(function (subBlock) {
+        var hasVisible = Array.from(
+            subBlock.querySelectorAll('.patch-rg-block')
+        ).some(function (r) { return r.style.display !== 'none'; });
+        subBlock.style.display = hasVisible ? '' : 'none';
+    });
+}
+</script>
+{% endblock %}

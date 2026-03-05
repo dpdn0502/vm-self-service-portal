@@ -1,5 +1,5 @@
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime, timedelta
 
 db = SQLAlchemy()
 
@@ -106,4 +106,100 @@ class ApprovalRequest(db.Model):
             'approver1_status': self.approver1_status,
             'approver2_status': self.approver2_status,
             'snow_ticket':      self.snow_ticket
+        }
+
+
+class DecommissionRequest(db.Model):
+    """
+    Tracks the full lifecycle of a SNOW-initiated VM decommission.
+    States: pending → prechecks_running → prechecks_done → soft_deleted
+            → hard_deleted | restored | prechecks_failed
+    """
+    __tablename__ = 'decommission_requests'
+
+    id              = db.Column(db.Integer, primary_key=True)
+    created_at      = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at      = db.Column(db.DateTime, default=datetime.utcnow,
+                                onupdate=datetime.utcnow)
+
+    # VM identification
+    vm_name         = db.Column(db.String(100), nullable=False)
+    resource_group  = db.Column(db.String(100), nullable=False)
+    subscription_id = db.Column(db.String(100))
+
+    # SNOW data (from inbound API call)
+    snow_ticket     = db.Column(db.String(50))   # CHG number
+    snow_sys_id     = db.Column(db.String(100))  # for PATCH updates back to SNOW
+    snow_caller     = db.Column(db.String(100))  # who raised the ticket
+
+    # CAB approval reference
+    cab_approval_number = db.Column(db.String(100))
+    cab_approver_name   = db.Column(db.String(100))
+    cab_approver_email  = db.Column(db.String(100))  # if present → phase emails sent
+    cab_approver_dept   = db.Column(db.String(100))
+
+    # State machine
+    state           = db.Column(db.String(30), default='pending')
+
+    # Pre-check results (captured synchronously during prechecks)
+    snapshot_name   = db.Column(db.String(200))
+    snapshot_id     = db.Column(db.String(500))
+    metadata_json   = db.Column(db.Text)   # full VM config as JSON
+    dns_records     = db.Column(db.Text)   # DNS config as text
+    precheck_notes  = db.Column(db.Text)   # warnings / observations
+
+    # Soft-delete tracking
+    soft_deleted_at   = db.Column(db.DateTime)
+    hard_delete_due   = db.Column(db.DateTime)  # advisory — soft_deleted_at + 30 days
+
+    # Completion
+    completed_at    = db.Column(db.DateTime)
+    completed_by    = db.Column(db.String(100))  # admin email
+
+    # Metadata
+    initiated_by    = db.Column(db.String(100))  # 'SNOW API' or admin email
+    notes           = db.Column(db.Text)
+    error_message   = db.Column(db.Text)
+
+    # ── Helpers ────────────────────────────────────────────────
+
+    def days_until_due(self):
+        if not self.hard_delete_due:
+            return None
+        return (self.hard_delete_due - datetime.utcnow()).days
+
+    def is_overdue(self):
+        if not self.hard_delete_due:
+            return False
+        return datetime.utcnow() > self.hard_delete_due
+
+    def to_dict(self):
+        return {
+            'id':                   self.id,
+            'created_at':           self.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'updated_at':           self.updated_at.strftime('%Y-%m-%d %H:%M:%S') if self.updated_at else None,
+            'vm_name':              self.vm_name,
+            'resource_group':       self.resource_group,
+            'subscription_id':      self.subscription_id,
+            'snow_ticket':          self.snow_ticket,
+            'snow_sys_id':          self.snow_sys_id,
+            'snow_caller':          self.snow_caller,
+            'cab_approval_number':  self.cab_approval_number,
+            'cab_approver_name':    self.cab_approver_name,
+            'cab_approver_email':   self.cab_approver_email,
+            'cab_approver_dept':    self.cab_approver_dept,
+            'state':                self.state,
+            'snapshot_name':        self.snapshot_name,
+            'metadata_json':        self.metadata_json,
+            'dns_records':          self.dns_records,
+            'precheck_notes':       self.precheck_notes,
+            'soft_deleted_at':      self.soft_deleted_at.strftime('%Y-%m-%d %H:%M:%S') if self.soft_deleted_at else None,
+            'hard_delete_due':      self.hard_delete_due.strftime('%Y-%m-%d') if self.hard_delete_due else None,
+            'completed_at':         self.completed_at.strftime('%Y-%m-%d %H:%M:%S') if self.completed_at else None,
+            'completed_by':         self.completed_by,
+            'initiated_by':         self.initiated_by,
+            'notes':                self.notes,
+            'error_message':        self.error_message,
+            'days_until_due':       self.days_until_due(),
+            'is_overdue':           self.is_overdue(),
         }

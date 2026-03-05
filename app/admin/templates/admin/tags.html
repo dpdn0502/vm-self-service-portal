@@ -1,0 +1,493 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Tag Management — IaaS Portal{% endblock %}
+{% block page_title %}🏷️ Tag Management{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Tag Management</li>
+{% endblock %}
+
+{% block content %}
+
+{% if error %}
+<div class="alert alert-danger alert-dismissible">
+    <button type="button" class="close"
+            data-dismiss="alert">×</button>
+    <i class="icon fas fa-ban"></i> {{ error }}
+</div>
+{% endif %}
+
+<!-- CAF Standard Tags Reference card -->
+<div class="card card-info collapsed-card mb-3">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-info-circle me-2"></i>
+            CAF Standard Tag Schema (click to expand)
+        </h3>
+        <div class="card-tools">
+            <button type="button" class="btn btn-tool"
+                    data-card-widget="collapse">
+                <i class="fas fa-plus"></i>
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            {% for key, values in standard_tags.items() %}
+            <div class="col-md-3 mb-2">
+                <strong class="text-primary">{{ key }}</strong><br>
+                {% if values %}
+                    <small class="text-muted">
+                        {{ values | join(' / ') }}
+                    </small>
+                {% else %}
+                    <small class="text-muted">Free text</small>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- VM Tags Table -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-server me-2"></i>
+            All VMs — Tag Status
+        </h3>
+        <div class="card-tools">
+            <button onclick="location.reload()"
+                    class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-sync"></i> Refresh
+            </button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0" id="tagsTable">
+            <thead class="thead-dark">
+                <tr>
+                    <th>VM Name</th>
+                    <th>Resource Group</th>
+                    <th>Location</th>
+                    <th>Tags</th>
+                    <th>Coverage</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for vm in vms %}
+                <tr>
+                    <td><strong>{{ vm.name }}</strong></td>
+                    <td><small>{{ vm.resource_group }}</small></td>
+                    <td><small>{{ vm.location }}</small></td>
+
+                    <!-- Show current tag badges -->
+                    <td>
+                        {% if vm.tags %}
+                            {% for k, v in vm.tags.items() %}
+                            <span class="badge badge-secondary me-1 mb-1"
+                                  title="{{ k }}: {{ v }}">
+                                {{ k }}: {{ v[:20] }}
+                            </span>
+                            {% endfor %}
+                        {% else %}
+                            <span class="text-muted small">
+                                <i class="fas fa-exclamation-triangle
+                                          text-warning"></i>
+                                No tags
+                            </span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Tag coverage score — how many CAF tags present -->
+                    <td>
+                        {% set caf_keys = standard_tags.keys() | list %}
+                        {% set covered = vm.tags.keys() | list
+                             if vm.tags else [] %}
+                        {% set count = covered | select('in', caf_keys)
+                             | list | length %}
+                        {% set total = caf_keys | length %}
+                        {% set pct = ((count / total) * 100) | int %}
+
+                        <div class="progress" style="height:8px; width:80px;">
+                            <div class="progress-bar
+                                {% if pct >= 75 %}bg-success
+                                {% elif pct >= 40 %}bg-warning
+                                {% else %}bg-danger{% endif %}"
+                                style="width:{{ pct }}%">
+                            </div>
+                        </div>
+                        <small class="text-muted">
+                            {{ count }}/{{ total }} CAF tags
+                        </small>
+                    </td>
+
+                    <!-- Per-VM action buttons -->
+                    <td>
+                        {% if session.get('portal_role') in
+                              ['contributor', 'admin'] %}
+                        <button class="btn btn-primary btn-xs me-1"
+                                data-vmname="{{ vm.name }}"
+                                data-rg="{{ vm.resource_group }}"
+                                data-tags="{{ vm.tags | tojson | e }}"
+                                onclick="openBulkTagBtn(this)">
+                            <i class="fas fa-tags"></i> Edit Tags
+                        </button>
+                        {% endif %}
+                        <a href="/admin/vms/{{ vm.name }}/detail?rg={{ vm.resource_group }}"
+                           class="btn btn-default btn-xs border">
+                            <i class="fas fa-eye"></i> Detail
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Bulk Tag Edit Modal -->
+<div class="modal fade" id="bulkTagModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary">
+                <h5 class="modal-title text-white">
+                    <i class="fas fa-tags me-2"></i>
+                    Edit Tags —
+                    <span id="bulkTagVmName"></span>
+                </h5>
+                <button type="button" class="close text-white"
+                        data-dismiss="modal">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="callout callout-warning mb-3">
+                    <i class="fas fa-info-circle me-1"></i>
+                    All tag changes are submitted as
+                    <strong>one approval request</strong>.
+                    Requires 2 approvals before applying.
+                    A ServiceNow Change Request will be
+                    auto-created.
+                </div>
+
+                <!-- Quick-fill all CAF tags -->
+                <div class="mb-3">
+                    <button type="button"
+                            class="btn btn-outline-info btn-sm"
+                            onclick="prefillCAFTags()">
+                        <i class="fas fa-magic me-1"></i>
+                        Pre-fill all CAF tag keys
+                    </button>
+                    <small class="text-muted ms-2">
+                        Adds all 8 standard CAF keys as empty
+                        rows — fill in values then submit once.
+                    </small>
+                </div>
+
+                <!-- Tag rows table -->
+                <table class="table table-sm table-bordered"
+                       id="tagRowsTable">
+                    <thead class="thead-light">
+                        <tr>
+                            <th style="width:35%">Key</th>
+                            <th>Value</th>
+                            <th style="width:40px"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tagRowsBody"></tbody>
+                </table>
+
+                <button type="button"
+                        class="btn btn-outline-secondary btn-sm"
+                        onclick="addTagRow('', '')">
+                    <i class="fas fa-plus me-1"></i>
+                    Add row
+                </button>
+            </div>
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-dismiss="modal">
+                    Cancel
+                </button>
+                <button type="button"
+                        class="btn btn-primary"
+                        onclick="submitBulkTags()">
+                    <i class="fas fa-paper-plane me-1"></i>
+                    Submit for Approval
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Spinner -->
+<div id="loadingOverlay"
+     style="display:none; position:fixed; top:0; left:0;
+            width:100%; height:100%;
+            background:rgba(0,0,0,0.5); z-index:9999;
+            justify-content:center; align-items:center;">
+    <div class="text-center text-white">
+        <div class="spinner-border mb-3"
+             style="width:3rem; height:3rem;"></div>
+        <h5 id="loadingText">Submitting request...</h5>
+    </div>
+</div>
+
+<script>
+    const STANDARD_TAGS = {{ standard_tags | tojson }};
+    const CAF_KEYS      = Object.keys(STANDARD_TAGS);
+
+    let tagTargetVm = '';
+    let tagTargetRg = '';
+
+    // ── Build a suggested-values datalist id for a key ────────
+    function datalistId(key) {
+        return 'dl_' + key.replace(/\W/g, '_');
+    }
+
+    // ── Inject hidden <datalist> elements for CAF values ──────
+    function ensureDatalist(key) {
+        const id     = datalistId(key);
+        const values = STANDARD_TAGS[key];
+        if (!values || values.length === 0) return '';
+        if (!document.getElementById(id)) {
+            const dl = document.createElement('datalist');
+            dl.id    = id;
+            values.forEach(v => {
+                const opt  = document.createElement('option');
+                opt.value  = v;
+                dl.appendChild(opt);
+            });
+            document.body.appendChild(dl);
+        }
+        return id;
+    }
+
+    // ── Render a key dropdown cell ─────────────────────────────
+    function keyDropdownHtml(key) {
+        const opts = CAF_KEYS.map(k =>
+            `<option value="${k}"${k === key ? ' selected' : ''}>${k}</option>`
+        ).join('');
+        return `
+            <div class="input-group input-group-sm">
+                <input type="text"
+                       class="form-control tag-key-input"
+                       value="${escHtml(key)}"
+                       placeholder="Key"
+                       onchange="onKeyChange(this)">
+                <div class="input-group-append">
+                    <button class="btn btn-outline-secondary
+                                   dropdown-toggle btn-sm"
+                            type="button"
+                            data-toggle="dropdown"
+                            title="CAF keys">
+                        CAF
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-right"
+                         style="max-height:220px;overflow-y:auto">
+                        ${CAF_KEYS.map(k =>
+                            `<a class="dropdown-item" href="#"
+                                onclick="pickKey(this,'${escHtml(k)}');
+                                         return false;">
+                                 ${k}
+                             </a>`
+                        ).join('')}
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    // ── Add a new tag row (optionally pre-filled) ─────────────
+    function addTagRow(key, value) {
+        const body = document.getElementById('tagRowsBody');
+        const tr   = document.createElement('tr');
+        const dlId = key ? ensureDatalist(key) : '';
+        tr.innerHTML = `
+            <td>${keyDropdownHtml(key)}</td>
+            <td>
+                <input type="text"
+                       class="form-control form-control-sm
+                              tag-value-input"
+                       value="${escHtml(value)}"
+                       placeholder="Value"
+                       ${dlId ? `list="${dlId}"` : ''}>
+            </td>
+            <td class="text-center">
+                <button type="button"
+                        class="btn btn-outline-danger btn-xs"
+                        onclick="this.closest('tr').remove()"
+                        title="Remove row">
+                    <i class="fas fa-times"></i>
+                </button>
+            </td>`;
+        body.appendChild(tr);
+    }
+
+    // ── Pick key from CAF dropdown ────────────────────────────
+    function pickKey(anchor, key) {
+        const row   = anchor.closest('tr');
+        const input = row.querySelector('.tag-key-input');
+        input.value = key;
+        // Wire up datalist for value suggestions
+        const dlId  = ensureDatalist(key);
+        if (dlId) {
+            row.querySelector('.tag-value-input')
+               .setAttribute('list', dlId);
+        }
+    }
+
+    // ── Wire up datalist when user types a known key ──────────
+    function onKeyChange(input) {
+        const key  = input.value.trim();
+        const dlId = ensureDatalist(key);
+        if (dlId) {
+            input.closest('tr')
+                 .querySelector('.tag-value-input')
+                 .setAttribute('list', dlId);
+        }
+    }
+
+    // ── Pre-fill all 8 CAF tag keys (skip existing) ───────────
+    function prefillCAFTags() {
+        const existing = getTagRowKeys();
+        CAF_KEYS.forEach(key => {
+            if (!existing.includes(key)) {
+                addTagRow(key, '');
+            }
+        });
+    }
+
+    // ── Return current key values in the table ────────────────
+    function getTagRowKeys() {
+        return Array.from(
+            document.querySelectorAll('.tag-key-input')
+        ).map(i => i.value.trim());
+    }
+
+    // ── Open modal — pre-load existing VM tags ────────────────
+    function openBulkTag(vmName, rg, existingTags) {
+        tagTargetVm = vmName;
+        tagTargetRg = rg;
+        document.getElementById('bulkTagVmName')
+                .textContent = vmName;
+        document.getElementById('tagRowsBody').innerHTML = '';
+
+        // Load existing tags first
+        if (existingTags && typeof existingTags === 'object') {
+            Object.entries(existingTags).forEach(([k, v]) => {
+                addTagRow(k, v);
+            });
+        }
+        // Always add one blank row if nothing loaded
+        if (!document.querySelector('.tag-key-input')) {
+            addTagRow('', '');
+        }
+        $('#bulkTagModal').modal('show');
+    }
+
+    // ── Collect rows and submit ───────────────────────────────
+    function submitBulkTags() {
+        const rows   = document.getElementById('tagRowsBody')
+                               .querySelectorAll('tr');
+        const tags   = {};
+        let   hasErr = false;
+
+        rows.forEach(tr => {
+            const key = tr.querySelector('.tag-key-input')
+                          .value.trim();
+            const val = tr.querySelector('.tag-value-input')
+                          .value.trim();
+            if (key && val) {
+                tags[key] = val;
+            } else if (key && !val) {
+                tr.querySelector('.tag-value-input')
+                  .classList.add('is-invalid');
+                hasErr = true;
+            }
+        });
+
+        if (hasErr) {
+            toastr.warning(
+                'Please fill in all values or remove empty rows.'
+            );
+            return;
+        }
+        if (Object.keys(tags).length === 0) {
+            toastr.warning('Add at least one tag to submit.');
+            return;
+        }
+        // Azure hard limit: 50 tags per resource
+        if (Object.keys(tags).length > 50) {
+            toastr.error(
+                `Azure allows a maximum of 50 tags per resource. ` +
+                `You have ${Object.keys(tags).length}. Remove some rows.`
+            );
+            return;
+        }
+
+        $('#bulkTagModal').modal('hide');
+        document.getElementById('loadingText').textContent =
+            `Submitting ${Object.keys(tags).length} tag(s) for approval...`;
+        document.getElementById('loadingOverlay')
+            .style.display = 'flex';
+
+        const formData = new FormData();
+        formData.append('vm_name',        tagTargetVm);
+        formData.append('resource_group', tagTargetRg);
+        formData.append('action',         'tag_bulk_update');
+        formData.append('tags_json',      JSON.stringify(tags));
+
+        fetch('/admin/tags/action', {
+            method: 'POST',
+            body:   formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('loadingOverlay')
+                .style.display = 'none';
+            const type = data.success ? 'success' : 'danger';
+            const icon = data.success ? '⏳' : '❌';
+            document.getElementById('alertBox').innerHTML = `
+                <div class="alert alert-${type}
+                            alert-dismissible fade show">
+                    ${icon} ${data.message}
+                    <a href="/admin/approvals"
+                       class="alert-link ms-2">
+                        View Approvals →
+                    </a>
+                    <button type="button" class="close"
+                            data-dismiss="alert">×</button>
+                </div>`;
+        })
+        .catch(err => {
+            document.getElementById('loadingOverlay')
+                .style.display = 'none';
+            document.getElementById('alertBox').innerHTML = `
+                <div class="alert alert-danger">
+                    ❌ Error: ${err.message}
+                </div>`;
+        });
+    }
+
+    // ── Unwrap data-* attrs from button and open modal ────────
+    function openBulkTagBtn(btn) {
+        const vmName = btn.getAttribute('data-vmname');
+        const rg     = btn.getAttribute('data-rg');
+        let   tags   = {};
+        try {
+            tags = JSON.parse(btn.getAttribute('data-tags') || '{}');
+        } catch(e) {}
+        openBulkTag(vmName, rg, tags);
+    }
+
+    // ── HTML-escape helper ────────────────────────────────────
+    function escHtml(str) {
+        return String(str || '')
+            .replace(/&/g,'&amp;')
+            .replace(/"/g,'&quot;')
+            .replace(/</g,'&lt;')
+            .replace(/>/g,'&gt;');
+    }
+</script>
+{% endblock %}

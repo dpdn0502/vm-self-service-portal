@@ -46,6 +46,10 @@ class Config:
     MAIL_PASSWORD = os.getenv('MAIL_PASSWORD')
     MAIL_DEFAULT_SENDER = os.getenv('MAIL_DEFAULT_SENDER')
 
+    # Decommission inbound API token
+    # Set DECOM_API_TOKEN in .env for production — default is for local testing only
+    DECOM_API_TOKEN = os.getenv('DECOM_API_TOKEN', 'changeme-token')
+
 
 
 

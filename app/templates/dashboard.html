@@ -30,6 +30,19 @@
 
 <!-- VM Table -->
 {% if vms %}
+
+<!-- Subscription header -->
+{% set sub_name = vms[0].subscription_name
+       if vms[0].subscription_name is defined
+       else 'Azure Subscription' %}
+<div class="alert alert-info py-2 mb-3 d-flex align-items-center gap-2">
+    <span class="fw-semibold">☁️ Subscription:</span>
+    <span>{{ sub_name }}</span>
+    <small class="text-muted ms-2">
+        ({{ vms|length }} VM{{ 's' if vms|length != 1 }})
+    </small>
+</div>
+
 <div class="card shadow-sm mb-4">
     <div class="card-body p-0">
         <table class="table table-hover mb-0">
@@ -40,13 +53,19 @@
                     <th>Size</th>
                     <th>Location</th>
                     <th>OS</th>
+                    <th>Subscription</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% for vm in vms %}
                 <tr id="row-{{ vm.name }}">
-                    <td><strong>{{ vm.name }}</strong></td>
+                    <td>
+                        <a href="/vm/{{ vm.name }}/detail?rg={{ vm.resource_group }}"
+                           class="fw-semibold text-decoration-none">
+                            {{ vm.name }}
+                        </a>
+                    </td>
                     <td>
                         {% if vm.power_state == 'Running' %}
                             <span class="badge bg-success">
@@ -65,7 +84,28 @@
                     </td>
                     <td><code>{{ vm.size }}</code></td>
                     <td>{{ vm.location }}</td>
-                    <td>{{ vm.os_type }}</td>
+                    <td>
+                        {% if vm.os_type == 'Linux' %}
+                            <span class="badge bg-warning text-dark">
+                                🐧 Linux
+                            </span>
+                        {% elif vm.os_type == 'Windows' %}
+                            <span class="badge bg-primary">
+                                🪟 Windows
+                            </span>
+                        {% else %}
+                            <span class="badge bg-secondary">
+                                {{ vm.os_type }}
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <small class="text-muted">
+                            {{ vm.subscription_name
+                               if vm.subscription_name is defined
+                               else '—' }}
+                        </small>
+                    </td>
                     <td>
                         <!-- Low risk — immediate execution -->
                         {% if vm.power_state == 'Running' %}
@@ -98,7 +138,8 @@
                             onclick="requestResize(
                                 '{{ vm.name }}',
                                 '{{ vm.resource_group }}',
-                                '{{ vm.size }}')">
+                                '{{ vm.size }}',
+                                '{{ vm.os_type }}')">
                             📐 Resize
                         </button>
                         <!-- VM detail page link -->
@@ -240,11 +281,8 @@
                            class="form-control"
                            id="resizeNewSize"
                            placeholder="e.g. Standard_D4s_v3">
-                    <div class="form-text">
-                        Common sizes: Standard_B2s, Standard_B4ms,
-                        Standard_D2s_v3, Standard_D4s_v3,
-                        Standard_D8s_v3
-                    </div>
+                    <!-- OS-specific suggestions injected here -->
+                    <div id="resizeSuggestions" class="mt-2"></div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -373,7 +411,12 @@
     let resizeRg      = '';
     let resizeCurrent = '';
 
-    function requestResize(vmName, resourceGroup, currentSize) {
+    function setSize(size) {
+        document.getElementById('resizeNewSize').value = size;
+    }
+
+    function requestResize(vmName, resourceGroup,
+                           currentSize, osType) {
         resizeVmName  = vmName;
         resizeRg      = resourceGroup;
         resizeCurrent = currentSize;
@@ -383,6 +426,37 @@
         document.getElementById('resizeCurrentSize').textContent =
             currentSize;
         document.getElementById('resizeNewSize').value = '';
+
+        // OS-specific size suggestions
+        const linuxSizes = [
+            'Standard_B2s', 'Standard_B4ms',
+            'Standard_D2s_v3', 'Standard_D4s_v3',
+            'Standard_F4s_v2', 'Standard_F8s_v2'
+        ];
+        const windowsSizes = [
+            'Standard_D2s_v3', 'Standard_D4s_v3',
+            'Standard_E4s_v3', 'Standard_E8s_v3',
+            'Standard_D8s_v3', 'Standard_B4ms'
+        ];
+
+        const sizes  = (osType === 'Linux')
+            ? linuxSizes : windowsSizes;
+        const icon   = (osType === 'Linux') ? '🐧' : '🪟';
+        const label  = (osType === 'Linux')
+            ? 'Linux suggestions'
+            : 'Windows suggestions';
+
+        const btns = sizes.map(s =>
+            `<button type="button"
+                     class="btn btn-outline-secondary btn-sm
+                            me-1 mb-1"
+                     onclick="setSize('${s}')">${s}</button>`
+        ).join('');
+
+        document.getElementById('resizeSuggestions').innerHTML =
+            `<small class="text-muted d-block mb-1">
+                ${icon} ${label}:
+             </small>${btns}`;
 
         new bootstrap.Modal(
             document.getElementById('resizeModal')

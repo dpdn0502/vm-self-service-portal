@@ -1,0 +1,611 @@
+{% extends 'admin/base.html' %}
+
+{% block title %}Decommission Queue — IaaS Portal{% endblock %}
+{% block page_title %}VM Decommission Queue{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Decommission</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* State badges */
+    .badge-soft-deleted  { background: #fd7e14; color: #fff; }
+    .badge-prechecks     { background: #17a2b8; color: #fff; }
+    .badge-hard-deleted  { background: #dc3545; color: #fff; }
+    .badge-restored      { background: #28a745; color: #fff; }
+
+    .overdue-row td { background: #fff5f5 !important; }
+
+    /* Confirm input in hard-delete modal */
+    #confirmVmInput.is-valid  { border-color: #28a745; }
+    #confirmVmInput.is-invalid{ border-color: #dc3545; }
+
+    /* Timeline strip inside detail modal */
+    .timeline-strip { border-left: 3px solid #0078d4; padding-left: 12px; }
+    .timeline-strip .tl-item { margin-bottom: 8px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Summary cards ──────────────────────────────────────────── -->
+<div class="row mb-3">
+    <div class="col-md-3">
+        <div class="info-box">
+            <span class="info-box-icon bg-warning">
+                <i class="fas fa-clock"></i>
+            </span>
+            <div class="info-box-content">
+                <span class="info-box-text">Pending / In Progress</span>
+                <span class="info-box-number">{{ active_count }}</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="info-box">
+            <span class="info-box-icon bg-orange"
+                  style="background:#fd7e14!important">
+                <i class="fas fa-pause-circle"></i>
+            </span>
+            <div class="info-box-content">
+                <span class="info-box-text">Soft-Deleted (holding)</span>
+                <span class="info-box-number">
+                    {% set soft = decoms | selectattr('state', 'eq', 'soft_deleted') | list %}
+                    {{ soft | length }}
+                </span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="info-box">
+            <span class="info-box-icon bg-danger">
+                <i class="fas fa-exclamation-triangle"></i>
+            </span>
+            <div class="info-box-content">
+                <span class="info-box-text">Overdue (past 30 days)</span>
+                <span class="info-box-number text-danger">
+                    {{ overdue_count }}
+                </span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="info-box">
+            <span class="info-box-icon bg-success">
+                <i class="fas fa-check-circle"></i>
+            </span>
+            <div class="info-box-content">
+                <span class="info-box-text">Completed</span>
+                <span class="info-box-number">
+                    {% set done = decoms | selectattr('state', 'in',
+                        ['hard_deleted', 'restored']) | list %}
+                    {{ done | length }}
+                </span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Queue table ────────────────────────────────────────────── -->
+<div class="card card-outline card-primary">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-skull-crossbones mr-2"></i>
+            Decommission Requests
+        </h3>
+        <div class="card-tools">
+            <span class="text-muted small">
+                SNOW initiates via
+                <code>POST /api/decommission</code>
+                with Bearer token
+            </span>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover table-sm mb-0" id="decomTable">
+            <thead class="thead-light">
+                <tr>
+                    <th>#</th>
+                    <th>VM / Resource Group</th>
+                    <th>SNOW Ticket</th>
+                    <th>CAB Approver</th>
+                    <th>State</th>
+                    <th>Created</th>
+                    <th>30-Day Deadline</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for d in decoms %}
+            <tr {% if d.is_overdue() and d.state == 'soft_deleted' %}
+                    class="overdue-row"
+                {% endif %}>
+                <td class="text-muted small">{{ d.id }}</td>
+
+                <!-- VM -->
+                <td>
+                    <strong>{{ d.vm_name }}</strong><br>
+                    <small class="text-muted">{{ d.resource_group }}</small>
+                </td>
+
+                <!-- SNOW ticket -->
+                <td>
+                    {% if d.snow_ticket %}
+                        <code>{{ d.snow_ticket }}</code><br>
+                        <small class="text-muted">{{ d.snow_caller or '' }}</small>
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+
+                <!-- CAB approver -->
+                <td>
+                    {% if d.cab_approver_name %}
+                        {{ d.cab_approver_name }}<br>
+                        <small class="text-muted">
+                            {{ d.cab_approver_dept or '' }}
+                            {% if d.cab_approval_number %}
+                                · {{ d.cab_approval_number }}
+                            {% endif %}
+                        </small>
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+
+                <!-- State badge -->
+                <td>
+                    {% if d.state == 'pending' %}
+                        <span class="badge badge-warning">Pending</span>
+                    {% elif d.state == 'prechecks_running' %}
+                        <span class="badge badge-prechecks">
+                            <i class="fas fa-spinner fa-spin mr-1"></i>Pre-checks
+                        </span>
+                    {% elif d.state == 'prechecks_done' %}
+                        <span class="badge badge-info">Pre-checks Done</span>
+                    {% elif d.state == 'prechecks_failed' %}
+                        <span class="badge badge-danger">Pre-checks Failed</span>
+                    {% elif d.state == 'soft_deleted' %}
+                        <span class="badge badge-soft-deleted">Soft-Deleted</span>
+                        {% if d.is_overdue() %}
+                            <span class="badge badge-danger ml-1">OVERDUE</span>
+                        {% endif %}
+                    {% elif d.state == 'hard_deleted' %}
+                        <span class="badge badge-hard-deleted">Hard-Deleted</span>
+                    {% elif d.state == 'restored' %}
+                        <span class="badge badge-restored">Restored</span>
+                    {% else %}
+                        <span class="badge badge-secondary">{{ d.state }}</span>
+                    {% endif %}
+                </td>
+
+                <!-- Created -->
+                <td>
+                    <small>{{ d.created_at.strftime('%Y-%m-%d') }}</small>
+                </td>
+
+                <!-- 30-day deadline -->
+                <td>
+                    {% if d.hard_delete_due %}
+                        <span class="{% if d.is_overdue() %}text-danger font-weight-bold{% else %}text-muted{% endif %}">
+                            {{ d.hard_delete_due.strftime('%Y-%m-%d') }}
+                        </span><br>
+                        <small class="text-muted">
+                            {% set days = d.days_until_due() %}
+                            {% if days is not none %}
+                                {% if days < 0 %}
+                                    <span class="text-danger">{{ days|abs }} days overdue</span>
+                                {% elif days == 0 %}
+                                    <span class="text-warning">Due today</span>
+                                {% else %}
+                                    {{ days }} days remaining
+                                {% endif %}
+                            {% endif %}
+                        </small>
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+
+                <!-- Actions -->
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <!-- Always: View Details -->
+                        <button class="btn btn-default btn-sm"
+                                onclick="showDetail({{ d.id }})"
+                                title="View Details">
+                            <i class="fas fa-info-circle"></i>
+                        </button>
+
+                        {% if d.state in ['pending', 'prechecks_failed'] %}
+                        <!-- Run pre-checks -->
+                        <button class="btn btn-info btn-sm"
+                                onclick="runPrechecks({{ d.id }}, '{{ d.vm_name }}')"
+                                title="Run Pre-checks">
+                            <i class="fas fa-search"></i> Pre-checks
+                        </button>
+
+                        {% elif d.state == 'prechecks_done' %}
+                        <!-- Soft delete -->
+                        <button class="btn btn-warning btn-sm"
+                                onclick="confirmSoftDelete({{ d.id }}, '{{ d.vm_name }}')"
+                                title="Soft Delete VM">
+                            <i class="fas fa-pause"></i> Soft Delete
+                        </button>
+
+                        {% elif d.state == 'soft_deleted' %}
+                        <!-- Hard delete -->
+                        <button class="btn btn-danger btn-sm"
+                                onclick="openHardDelete({{ d.id }}, '{{ d.vm_name }}')"
+                                title="Permanently Delete">
+                            <i class="fas fa-trash-alt"></i> Hard Delete
+                        </button>
+                        <!-- Restore -->
+                        <button class="btn btn-success btn-sm"
+                                onclick="confirmRestore({{ d.id }}, '{{ d.vm_name }}')"
+                                title="Restore VM">
+                            <i class="fas fa-undo"></i> Restore
+                        </button>
+                        {% endif %}
+
+                        <!-- Re-send notification (if email set) -->
+                        {% if d.cab_approver_email or (d.snow_caller and '@' in d.snow_caller) %}
+                        <button class="btn btn-default btn-sm"
+                                onclick="resendNotify({{ d.id }})"
+                                title="Re-send notification email">
+                            <i class="fas fa-envelope"></i>
+                        </button>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="8" class="text-center text-muted py-4">
+                    <i class="fas fa-inbox fa-2x mb-2 d-block"></i>
+                    No decommission requests.
+                    SNOW submits via
+                    <code>POST /api/decommission</code>.
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- ── Detail Modal ───────────────────────────────────────────── -->
+<div class="modal fade" id="detailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-info-circle mr-2"></i>
+                    Decommission Details
+                </h5>
+                <button type="button" class="close text-white"
+                        data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body" id="detailBody">
+                <div class="text-center py-3">
+                    <div class="spinner-border text-primary"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Hard-Delete Confirmation Modal ────────────────────────── -->
+<div class="modal fade" id="hardDeleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content border-danger">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>
+                    Permanent Deletion — Irreversible
+                </h5>
+                <button type="button" class="close text-white"
+                        data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="callout callout-danger">
+                    <p class="mb-1">
+                        This will <strong>permanently delete</strong>:
+                    </p>
+                    <ul class="mb-0">
+                        <li>The virtual machine</li>
+                        <li>OS disk</li>
+                        <li>All attached data disks</li>
+                        <li>Network interface(s)</li>
+                        <li>Public IP address(es)</li>
+                    </ul>
+                    <p class="mt-2 mb-0">
+                        The SNOW CHG ticket will be auto-closed.
+                    </p>
+                </div>
+                <div class="form-group mt-3">
+                    <label>
+                        Type <strong id="vmNameToConfirm"></strong>
+                        to confirm:
+                    </label>
+                    <input type="text" class="form-control"
+                           id="confirmVmInput"
+                           placeholder="VM name"
+                           oninput="validateConfirmInput()">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary"
+                        data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger"
+                        id="hardDeleteBtn"
+                        disabled
+                        onclick="executeHardDelete()">
+                    <i class="fas fa-trash-alt mr-1"></i>
+                    Permanently Delete
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Action feedback toast ─────────────────────────────────── -->
+<div id="actionToast" style="display:none;position:fixed;
+     bottom:24px;right:24px;z-index:9999;min-width:320px">
+    <div class="alert mb-0 shadow" id="toastBody" role="alert">
+        <span id="toastMsg"></span>
+    </div>
+</div>
+
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+// ════════════════════════════════════════════════════════════════
+// Decommission Queue — client-side controller
+// ════════════════════════════════════════════════════════════════
+
+let _hardDeleteId  = null;
+let _hardDeleteVm  = null;
+
+
+// ── Toast helper ─────────────────────────────────────────────────
+function showToast(msg, type) {
+    var toast = document.getElementById('actionToast');
+    var body  = document.getElementById('toastBody');
+    var text  = document.getElementById('toastMsg');
+    body.className = 'alert mb-0 shadow alert-' + (type || 'info');
+    text.textContent = msg;
+    toast.style.display = 'block';
+    setTimeout(function() { toast.style.display = 'none'; }, 5000);
+}
+
+
+// ── Detail modal ─────────────────────────────────────────────────
+function showDetail(decomId) {
+    document.getElementById('detailBody').innerHTML =
+        '<div class="text-center py-3">' +
+        '<div class="spinner-border text-primary"></div></div>';
+    $('#detailModal').modal('show');
+
+    fetch('/admin/decommission/' + decomId + '/detail')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            document.getElementById('detailBody').innerHTML =
+                buildDetailHtml(d);
+        })
+        .catch(function(e) {
+            document.getElementById('detailBody').innerHTML =
+                '<p class="text-danger">Failed to load: ' + e + '</p>';
+        });
+}
+
+function buildDetailHtml(d) {
+    var cab = '';
+    if (d.cab_approver_name || d.cab_approval_number) {
+        cab = '<tr><td colspan="2" class="bg-light font-weight-bold">' +
+              'CAB Approval</td></tr>' +
+              row('Approval Number', d.cab_approval_number || '—') +
+              row('Approver Name',   d.cab_approver_name   || '—') +
+              row('Approver Email',  d.cab_approver_email  || '—') +
+              row('Department',      d.cab_approver_dept   || '—');
+    }
+
+    var precheck = '';
+    if (d.precheck_notes) {
+        precheck = '<h6 class="mt-3">Pre-check Notes</h6>' +
+                   '<pre class="bg-light p-2 small">' +
+                   escHtml(d.precheck_notes) + '</pre>';
+    }
+    var meta = '';
+    if (d.metadata_json) {
+        meta = '<h6 class="mt-3">VM Metadata (captured)</h6>' +
+               '<pre class="bg-light p-2 small" ' +
+               'style="max-height:200px;overflow-y:auto">' +
+               escHtml(d.metadata_json) + '</pre>';
+    }
+    var dns = '';
+    if (d.dns_records) {
+        dns = '<h6 class="mt-3">DNS Records (documented)</h6>' +
+              '<pre class="bg-light p-2 small">' +
+              escHtml(d.dns_records) + '</pre>';
+    }
+    var errRow = d.error_message
+        ? '<tr><td><b>Error</b></td>' +
+          '<td class="text-danger">' + escHtml(d.error_message) + '</td></tr>'
+        : '';
+
+    return '<table class="table table-sm table-bordered mb-2">' +
+        row('VM Name',         d.vm_name) +
+        row('Resource Group',  d.resource_group) +
+        row('SNOW Ticket',     d.snow_ticket  || '—') +
+        row('SNOW Caller',     d.snow_caller  || '—') +
+        row('State',           '<strong>' + d.state + '</strong>') +
+        row('Snapshot',        d.snapshot_name || '—') +
+        row('Soft-Deleted At', d.soft_deleted_at || '—') +
+        row('Hard-Delete Due', d.hard_delete_due || '—') +
+        row('Completed At',    d.completed_at || '—') +
+        row('Completed By',    d.completed_by || '—') +
+        row('Initiated By',    d.initiated_by || '—') +
+        row('Notes',           d.notes || '—') +
+        errRow +
+        cab +
+        '</table>' +
+        precheck + dns + meta;
+}
+
+function row(label, val) {
+    return '<tr><td style="width:35%"><b>' + label + '</b></td>' +
+           '<td>' + (val || '—') + '</td></tr>';
+}
+
+function escHtml(s) {
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+
+// ── Run pre-checks ────────────────────────────────────────────────
+function runPrechecks(id, vmName) {
+    if (!confirm('Run pre-checks for ' + vmName + '?\n\n' +
+                 'This will create a safety snapshot — may take 2-3 minutes.')) {
+        return;
+    }
+    showToast('Running pre-checks for ' + vmName + '…', 'info');
+
+    fetch('/admin/decommission/' + id + '/prechecks', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                showToast('Pre-checks complete: ' + data.message, 'success');
+            } else {
+                showToast('Pre-checks failed: ' + data.message, 'danger');
+            }
+            setTimeout(function() { location.reload(); }, 2000);
+        })
+        .catch(function(e) {
+            showToast('Request error: ' + e, 'danger');
+        });
+}
+
+
+// ── Soft delete ───────────────────────────────────────────────────
+function confirmSoftDelete(id, vmName) {
+    if (!confirm('Soft-delete ' + vmName + '?\n\n' +
+                 'This will STOP the VM and mark it with decom tags.\n' +
+                 'Nothing is permanently deleted yet.\n' +
+                 'A 30-day advisory holding period will begin.')) {
+        return;
+    }
+    showToast('Stopping VM and applying decom tags…', 'warning');
+
+    fetch('/admin/decommission/' + id + '/soft-delete', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                showToast('VM soft-deleted. 30-day clock started.', 'success');
+            } else {
+                showToast('Soft-delete failed: ' + data.message, 'danger');
+            }
+            setTimeout(function() { location.reload(); }, 2000);
+        })
+        .catch(function(e) {
+            showToast('Request error: ' + e, 'danger');
+        });
+}
+
+
+// ── Hard delete (2-step: modal + typed confirmation) ──────────────
+function openHardDelete(id, vmName) {
+    _hardDeleteId = id;
+    _hardDeleteVm = vmName;
+    document.getElementById('vmNameToConfirm').textContent  = vmName;
+    document.getElementById('confirmVmInput').value          = '';
+    document.getElementById('confirmVmInput').className      = 'form-control';
+    document.getElementById('hardDeleteBtn').disabled        = true;
+    $('#hardDeleteModal').modal('show');
+}
+
+function validateConfirmInput() {
+    var input = document.getElementById('confirmVmInput').value.trim();
+    var btn   = document.getElementById('hardDeleteBtn');
+    if (input === _hardDeleteVm) {
+        document.getElementById('confirmVmInput').className = 'form-control is-valid';
+        btn.disabled = false;
+    } else {
+        document.getElementById('confirmVmInput').className = 'form-control is-invalid';
+        btn.disabled = true;
+    }
+}
+
+function executeHardDelete() {
+    document.getElementById('hardDeleteBtn').disabled = true;
+    $('#hardDeleteModal').modal('hide');
+    showToast('Permanently deleting ' + _hardDeleteVm + '… please wait.', 'danger');
+
+    fetch('/admin/decommission/' + _hardDeleteId + '/hard-delete', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ confirm_vm_name: _hardDeleteVm }),
+    })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                showToast('VM permanently deleted. SNOW ticket closed.', 'success');
+            } else {
+                showToast('Hard delete failed: ' + data.message, 'danger');
+            }
+            setTimeout(function() { location.reload(); }, 2500);
+        })
+        .catch(function(e) {
+            showToast('Request error: ' + e, 'danger');
+        });
+}
+
+
+// ── Restore ───────────────────────────────────────────────────────
+function confirmRestore(id, vmName) {
+    if (!confirm('Restore ' + vmName + ' from soft-delete?\n\n' +
+                 'The VM will be started and decom tags removed.\n' +
+                 'The SNOW ticket will NOT be auto-closed.')) {
+        return;
+    }
+    showToast('Restoring ' + vmName + '…', 'info');
+
+    fetch('/admin/decommission/' + id + '/restore', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                showToast('VM restored successfully.', 'success');
+            } else {
+                showToast('Restore failed: ' + data.message, 'danger');
+            }
+            setTimeout(function() { location.reload(); }, 2000);
+        })
+        .catch(function(e) {
+            showToast('Request error: ' + e, 'danger');
+        });
+}
+
+
+// ── Re-send notification ──────────────────────────────────────────
+function resendNotify(id) {
+    fetch('/admin/decommission/' + id + '/notify', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            showToast(data.message, data.success ? 'success' : 'danger');
+        })
+        .catch(function(e) {
+            showToast('Error: ' + e, 'danger');
+        });
+}
+</script>
+{% endblock %}

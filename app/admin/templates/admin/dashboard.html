@@ -1,6 +1,6 @@
 {% extends "admin/base.html" %}
 
-{% block title %}Dashboard — VM Portal{% endblock %}
+{% block title %}Dashboard — IaaS Portal{% endblock %}
 {% block page_title %}Dashboard{% endblock %}
 
 {% block breadcrumb %}
@@ -38,8 +38,64 @@
             </a>
         </div>
     </div>
-    
-    <!-- Role Info Banner -->
+
+    <!-- Running VMs -->
+    <div class="col-lg-3 col-6">
+        <div class="small-box bg-success">
+            <div class="inner">
+                <h3>{{ running_vms }}</h3>
+                <p>Running VMs</p>
+            </div>
+            <div class="icon">
+                <i class="fas fa-play-circle"></i>
+            </div>
+            <a href="/admin/vms?status=running"
+               class="small-box-footer">
+                View Running
+                <i class="fas fa-arrow-circle-right"></i>
+            </a>
+        </div>
+    </div>
+
+    <!-- Stopped VMs -->
+    <div class="col-lg-3 col-6">
+        <div class="small-box bg-danger">
+            <div class="inner">
+                <h3>{{ stopped_vms }}</h3>
+                <p>Stopped VMs</p>
+            </div>
+            <div class="icon">
+                <i class="fas fa-stop-circle"></i>
+            </div>
+            <a href="/admin/vms?status=stopped"
+               class="small-box-footer">
+                View Stopped
+                <i class="fas fa-arrow-circle-right"></i>
+            </a>
+        </div>
+    </div>
+
+    <!-- Pending Approvals -->
+    <div class="col-lg-3 col-6">
+        <div class="small-box bg-warning">
+            <div class="inner">
+                <h3>{{ pending_approvals }}</h3>
+                <p>Pending Approvals</p>
+            </div>
+            <div class="icon">
+                <i class="fas fa-clock"></i>
+            </div>
+            <a href="/admin/approvals"
+               class="small-box-footer">
+                View Approvals
+                <i class="fas fa-arrow-circle-right"></i>
+            </a>
+        </div>
+    </div>
+
+</div>
+
+<!-- Role Info Banner -->
 <div class="row mb-3">
     <div class="col-12">
         {% set role = session.get('portal_role', 'reader') %}
@@ -92,94 +148,37 @@
     </div>
 </div>
 
-
-    <!-- Running VMs -->
-    <div class="col-lg-3 col-6">
-        <div class="small-box bg-success">
-            <div class="inner">
-                <h3>{{ running_vms }}</h3>
-                <p>Running VMs</p>
-            </div>
-            <div class="icon">
-                <i class="fas fa-play-circle"></i>
-            </div>
-            <a href="/admin/vms"
-               class="small-box-footer">
-                View Running
-                <i class="fas fa-arrow-circle-right"></i>
-            </a>
-        </div>
-    </div>
-
-    <!-- Stopped VMs -->
-    <div class="col-lg-3 col-6">
-        <div class="small-box bg-danger">
-            <div class="inner">
-                <h3>{{ stopped_vms }}</h3>
-                <p>Stopped VMs</p>
-            </div>
-            <div class="icon">
-                <i class="fas fa-stop-circle"></i>
-            </div>
-            <a href="/admin/vms"
-               class="small-box-footer">
-                View Stopped
-                <i class="fas fa-arrow-circle-right"></i>
-            </a>
-        </div>
-    </div>
-
-    <!-- Pending Approvals -->
-    <div class="col-lg-3 col-6">
-        <div class="small-box bg-warning">
-            <div class="inner">
-                <h3>{{ pending_approvals }}</h3>
-                <p>Pending Approvals</p>
-            </div>
-            <div class="icon">
-                <i class="fas fa-clock"></i>
-            </div>
-            <a href="/admin/approvals"
-               class="small-box-footer">
-                View Approvals
-                <i class="fas fa-arrow-circle-right"></i>
-            </a>
-        </div>
-    </div>
-
-</div>
-
 <!-- Charts Row -->
 <div class="row">
 
     <!-- Actions by Type -->
-    <div class="col-md-6">
+    <div class="col-md-3">
         <div class="card">
-            <div class="card-header">
-                <h3 class="card-title">
+            <div class="card-header py-2">
+                <h3 class="card-title" style="font-size:0.9rem;">
                     <i class="fas fa-chart-pie me-2"></i>
                     Actions by Type
                 </h3>
             </div>
-            <div class="card-body">
+            <div class="card-body p-2">
                 <canvas id="actionTypeChart"
-                        height="200"></canvas>
+                        height="100"></canvas>
             </div>
         </div>
     </div>
 
     <!-- Activity Last 7 Days -->
-    <div class="col-md-6">
+    <div class="col-md-3">
         <div class="card">
-            <div class="card-header">
-                <h3 class="card-title">
+            <div class="card-header py-2">
+                <h3 class="card-title" style="font-size:0.9rem;">
                     <i class="fas fa-chart-bar me-2"></i>
                     Activity Last 7 Days
                 </h3>
             </div>
-            <div class="card-body">
+            <div class="card-body p-2">
                 <canvas id="activityChart"
-                        height="200"></canvas>
+                        height="100"></canvas>
             </div>
         </div>
     </div>

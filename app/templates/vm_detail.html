@@ -6,7 +6,22 @@
 <!-- Header -->
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-        <h2>🖥️ {{ vm_name }}</h2>
+        <h2>
+            🖥️ {{ vm_name }}
+            {% if vm_info.os_type == 'Linux' %}
+                <span class="badge bg-warning text-dark ms-2">
+                    🐧 Linux
+                </span>
+            {% elif vm_info.os_type == 'Windows' %}
+                <span class="badge bg-primary ms-2">
+                    🪟 Windows
+                </span>
+            {% else %}
+                <span class="badge bg-secondary ms-2">
+                    {{ vm_info.os_type }}
+                </span>
+            {% endif %}
+        </h2>
         <small class="text-muted">
             Resource Group: {{ resource_group }}
         </small>
@@ -17,9 +32,1305 @@
     </a>
 </div>
 
+<!-- Connection Info Card -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-dark text-white d-flex
+                align-items-center gap-2">
+        {% if vm_info.os_type == 'Linux' %}
+            🔗 SSH Connection Info
+        {% else %}
+            🔗 RDP Connection Info
+        {% endif %}
+    </div>
+    <div class="card-body">
+        {% if vm_info.os_type == 'Linux' %}
+
+            {% if vm_info.public_ip %}
+            <div class="mb-2">
+                <label class="form-label fw-semibold small text-muted">
+                    SSH COMMAND
+                </label>
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-dark text-white">$</span>
+                    <input type="text"
+                           class="form-control font-monospace"
+                           id="sshCommand"
+                           value="ssh {{ vm_info.admin_username or 'azureuser' }}@{{ vm_info.public_ip }}"
+                           readonly>
+                    <button class="btn btn-outline-secondary btn-sm"
+                            onclick="copyToClipboard('sshCommand')"
+                            title="Copy to clipboard">
+                        📋 Copy
+                    </button>
+                </div>
+            </div>
+            <div class="row text-muted small">
+                <div class="col-auto">
+                    <strong>Host:</strong>
+                    <code>{{ vm_info.public_ip }}</code>
+                </div>
+                <div class="col-auto">
+                    <strong>User:</strong>
+                    <code>{{ vm_info.admin_username or 'azureuser' }}</code>
+                </div>
+                <div class="col-auto">
+                    <strong>Port:</strong>
+                    <code>22</code>
+                </div>
+            </div>
+            {% else %}
+            <div class="alert alert-warning mb-2 py-2">
+                ⚠️ No public IP found — VM may be accessible via
+                private network or Bastion only.
+            </div>
+            <div class="text-muted small">
+                <strong>User:</strong>
+                <code>{{ vm_info.admin_username or 'azureuser' }}</code>
+                &nbsp;|&nbsp;
+                <strong>Port:</strong> <code>22</code>
+            </div>
+            {% endif %}
+
+            <!-- Post-attach Linux instructions (hidden by default) -->
+            <div class="mt-3">
+                <button class="btn btn-outline-secondary btn-sm"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#linuxDiskInstructions">
+                    📖 Linux post-disk-attach commands
+                </button>
+                <div class="collapse mt-2" id="linuxDiskInstructions">
+                    <div class="card card-body bg-dark text-light
+                                font-monospace small">
+                        <div class="text-warning mb-1">
+                            # After attaching a new data disk:
+                        </div>
+                        <div>sudo fdisk -l
+                            <span class="text-secondary">
+                                # identify new disk, e.g. /dev/sdc
+                            </span>
+                        </div>
+                        <div>sudo mkfs.ext4 /dev/sdc
+                            <span class="text-secondary">
+                                # format (skip if reusing)
+                            </span>
+                        </div>
+                        <div>sudo mkdir /mnt/data</div>
+                        <div>sudo mount /dev/sdc /mnt/data</div>
+                        <div class="mt-2 text-warning">
+                            # Persist across reboots (/etc/fstab):
+                        </div>
+                        <div>echo '/dev/sdc /mnt/data ext4 defaults 0 0'
+                            | sudo tee -a /etc/fstab
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        {% else %}
+            {# Windows RDP info #}
+            {% if vm_info.public_ip %}
+            <div class="mb-2">
+                <label class="form-label fw-semibold small text-muted">
+                    RDP CONNECTION
+                </label>
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-primary text-white">
+                        🪟
+                    </span>
+                    <input type="text"
+                           class="form-control font-monospace"
+                           id="rdpCommand"
+                           value="mstsc /v:{{ vm_info.public_ip }}"
+                           readonly>
+                    <button class="btn btn-outline-secondary btn-sm"
+                            onclick="copyToClipboard('rdpCommand')"
+                            title="Copy to clipboard">
+                        📋 Copy
+                    </button>
+                </div>
+            </div>
+            <div class="row text-muted small">
+                <div class="col-auto">
+                    <strong>Host:</strong>
+                    <code>{{ vm_info.public_ip }}</code>
+                </div>
+                <div class="col-auto">
+                    <strong>User:</strong>
+                    <code>{{ vm_info.admin_username or 'azureuser' }}</code>
+                </div>
+                <div class="col-auto">
+                    <strong>Port:</strong>
+                    <code>3389</code>
+                </div>
+            </div>
+            {% else %}
+            <div class="alert alert-warning mb-2 py-2">
+                ⚠️ No public IP found — VM may be on private
+                network or use Azure Bastion.
+            </div>
+            <div class="text-muted small">
+                <strong>User:</strong>
+                <code>{{ vm_info.admin_username or 'azureuser' }}</code>
+                &nbsp;|&nbsp;
+                <strong>Port:</strong> <code>3389</code>
+            </div>
+            {% endif %}
+
+            <!-- Post-attach Windows instructions -->
+            <div class="mt-3">
+                <button class="btn btn-outline-secondary btn-sm"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#windowsDiskInstructions">
+                    📖 Windows post-disk-attach steps
+                </button>
+                <div class="collapse mt-2"
+                     id="windowsDiskInstructions">
+                    <div class="card card-body bg-light small">
+                        <ol class="mb-0 ps-3">
+                            <li>Open <strong>Server Manager</strong>
+                                → Tools →
+                                <strong>Computer Management</strong>
+                            </li>
+                            <li>Click
+                                <strong>Disk Management</strong>
+                                in the left pane
+                            </li>
+                            <li>Right-click the new
+                                <em>Unknown / Offline</em> disk
+                                → <strong>Initialize Disk</strong>
+                            </li>
+                            <li>Right-click unallocated space
+                                → <strong>New Simple Volume</strong>
+                            </li>
+                            <li>Assign a drive letter
+                                and format as <strong>NTFS</strong>
+                            </li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
 {% if error %}
 <div class="alert alert-danger">⚠️ {{ error }}</div>
 {% endif %}
+
+<!-- DNS Management Card -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-dark text-white
+                d-flex justify-content-between align-items-center">
+        <span>🌐 DNS Management</span>
+        {% if session.get('portal_role') in
+              ['operator', 'contributor', 'admin'] %}
+        <div class="dropdown">
+            <button class="btn btn-primary btn-sm dropdown-toggle"
+                    data-bs-toggle="dropdown">
+                Manage DNS
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li>
+                    <a class="dropdown-item" href="#"
+                       onclick="openHostnameModal(); return false;">
+                        🖥️ Change Hostname
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="#"
+                       onclick="openDnsServersModal(); return false;">
+                        📡 Update DNS Servers
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="#"
+                       onclick="openDnsSuffixModal(); return false;">
+                        🔍 Update Search Suffixes
+                    </a>
+                </li>
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        <!-- Hostname row -->
+        <table class="table table-sm mb-0">
+            <tbody>
+                <tr>
+                    <th width="160" class="text-muted ps-3">Hostname</th>
+                    <td>
+                        <code>{{ dns_config.hostname }}</code>
+                    </td>
+                </tr>
+                <tr>
+                    <th class="text-muted ps-3">OS Type</th>
+                    <td>
+                        {% if dns_config.os_type == 'Linux' %}
+                            <span class="badge bg-warning text-dark">
+                                🐧 Linux
+                            </span>
+                        {% else %}
+                            <span class="badge bg-primary">
+                                🪟 Windows
+                            </span>
+                        {% endif %}
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- NIC DNS table -->
+        {% if dns_config.nics %}
+        <div class="px-3 pb-2">
+            <small class="text-muted fw-semibold">
+                Network Interface DNS
+            </small>
+            <table class="table table-sm table-bordered mt-1 mb-0">
+                <thead class="table-secondary">
+                    <tr>
+                        <th>NIC</th>
+                        <th>Custom DNS Servers</th>
+                        <th>Applied / Effective</th>
+                        <th>Internal FQDN</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for nic in dns_config.nics %}
+                    <tr>
+                        <td>
+                            <code class="small">{{ nic.nic_name }}</code>
+                        </td>
+                        <td>
+                            {% if nic.dns_servers %}
+                                {% for ip in nic.dns_servers %}
+                                <span class="badge bg-info text-dark me-1">
+                                    {{ ip }}
+                                </span>
+                                {% endfor %}
+                            {% else %}
+                                <span class="text-muted small">
+                                    Azure / VNET Default
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if nic.applied_dns_servers %}
+                                {% for ip in nic.applied_dns_servers %}
+                                <span class="badge bg-secondary me-1">
+                                    {{ ip }}
+                                </span>
+                                {% endfor %}
+                            {% else %}
+                                <span class="text-muted small">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if nic.internal_fqdn %}
+                                <code class="small">
+                                    {{ nic.internal_fqdn }}
+                                </code>
+                            {% else %}
+                                <span class="text-muted small">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="p-3 text-muted small">
+            ⚠️ No NIC DNS information available.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- DNS Hostname Modal -->
+<div class="modal fade" id="hostnameModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    🖥️ Change Hostname — {{ vm_name }}
+                </h5>
+                <button type="button"
+                        class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning py-2">
+                    ⚠️ Requires <strong>2 approvals</strong>.
+                    VM must be <strong>Running</strong>.
+                    {% if dns_config.os_type == 'Windows' %}
+                    Windows will <strong>restart</strong> to apply.
+                    {% endif %}
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">
+                        Current Hostname
+                    </label>
+                    <input type="text" class="form-control"
+                           value="{{ dns_config.hostname }}" disabled>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label fw-semibold">
+                        New Hostname
+                    </label>
+                    <input type="text" class="form-control"
+                           id="newHostname"
+                           placeholder="e.g. web-prod-01"
+                           maxlength="{{ 15 if dns_config.os_type == 'Windows' else 63 }}">
+                    <small class="text-muted">
+                        {% if dns_config.os_type == 'Windows' %}
+                        Max 15 characters (Windows NetBIOS limit).
+                        {% else %}
+                        Max 63 characters. Use lowercase, digits, hyphens only.
+                        {% endif %}
+                    </small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-bs-dismiss="modal">Cancel</button>
+                <button type="button"
+                        class="btn btn-primary"
+                        onclick="submitHostnameChange()">
+                    Submit for Approval
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- DNS Servers Modal -->
+<div class="modal fade" id="dnsServersModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    📡 Update DNS Servers — {{ vm_name }}
+                </h5>
+                <button type="button"
+                        class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning py-2">
+                    ⚠️ Requires <strong>2 approvals</strong>.
+                    No VM restart needed — takes effect within ~30s.
+                </div>
+                {% if dns_config.nics | length > 1 %}
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">
+                        Select NIC
+                    </label>
+                    <select class="form-select form-select-sm"
+                            id="dnsNicSelect">
+                        {% for nic in dns_config.nics %}
+                        <option value="{{ nic.nic_name }}|{{ nic.nic_rg }}">
+                            {{ nic.nic_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% else %}
+                {% if dns_config.nics %}
+                <p class="text-muted small mb-2">
+                    NIC: <code>{{ dns_config.nics[0].nic_name }}</code>
+                </p>
+                {% endif %}
+                {% endif %}
+                <div class="mb-2">
+                    <label class="form-label fw-semibold">
+                        DNS Server IPs
+                    </label>
+                    <textarea class="form-control font-monospace"
+                              id="dnsServersInput" rows="3"
+                              placeholder="One IP per line&#10;e.g.&#10;10.0.0.1&#10;10.0.0.2">{% if dns_config.nics %}{{ dns_config.nics[0].dns_servers | join('\n') }}{% endif %}</textarea>
+                    <small class="text-muted">
+                        One IP per line. Leave blank to reset to
+                        Azure / VNET default DNS.
+                    </small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-bs-dismiss="modal">Cancel</button>
+                <button type="button"
+                        class="btn btn-primary"
+                        onclick="submitDnsServers()">
+                    Submit for Approval
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- DNS Search Suffix Modal -->
+<div class="modal fade" id="dnsSuffixModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    🔍 Update DNS Search Suffixes — {{ vm_name }}
+                </h5>
+                <button type="button"
+                        class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning py-2">
+                    ⚠️ Requires <strong>2 approvals</strong>.
+                    VM must be <strong>Running</strong>.
+                </div>
+                <div class="mb-2">
+                    <label class="form-label fw-semibold">
+                        Search Suffixes
+                    </label>
+                    <textarea class="form-control font-monospace"
+                              id="dnsSuffixInput" rows="3"
+                              placeholder="One suffix per line&#10;e.g.&#10;corp.local&#10;dev.corp.local"></textarea>
+                    <small class="text-muted">
+                        One domain suffix per line.
+                        {% if dns_config.os_type == 'Linux' %}
+                        Writes to <code>/etc/resolv.conf</code>
+                        search line.
+                        {% else %}
+                        Uses <code>Set-DnsClientGlobalSetting</code>.
+                        {% endif %}
+                    </small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-bs-dismiss="modal">Cancel</button>
+                <button type="button"
+                        class="btn btn-primary"
+                        onclick="submitDnsSuffix()">
+                    Submit for Approval
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tags Panel -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-dark text-white
+                d-flex justify-content-between align-items-center">
+        <span>
+            🏷️ VM Tags
+            <span class="badge bg-secondary ms-2">
+                {{ vm_tags | length }}
+            </span>
+        </span>
+        <!-- Add Tag button — Contributor/Admin only -->
+        {% if session.get('portal_role') in
+              ['contributor', 'admin'] %}
+        <button class="btn btn-primary btn-sm"
+                onclick="openUserTagModal()">
+            + Add / Update Tag
+        </button>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        {% if vm_tags %}
+        <table class="table table-sm mb-0">
+            <thead class="table-secondary">
+                <tr>
+                    <th>Key</th>
+                    <th>Value</th>
+                    {% if session.get('portal_role')
+                           in ['contributor', 'admin'] %}
+                    <th width="100">Actions</th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for key, value in vm_tags.items() %}
+                <tr>
+                    <td>
+                        <strong>{{ key }}</strong>
+                        <!-- Highlight known CAF governance tags -->
+                        {% if key in standard_tags %}
+                        <span class="badge bg-info text-dark ms-1"
+                              style="font-size:0.65rem;">CAF</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ value }}</td>
+                    {% if session.get('portal_role')
+                           in ['contributor', 'admin'] %}
+                    <td>
+                        <!-- Edit — pre-fills modal with current key/value -->
+                        <button class="btn btn-outline-secondary
+                                       btn-sm me-1"
+                                onclick="openUserTagModal(
+                                    '{{ key }}',
+                                    '{{ value }}')">
+                            ✏️
+                        </button>
+                        <!-- Delete — high-risk, needs 2 approvals -->
+                        <button class="btn btn-outline-danger btn-sm"
+                                onclick="requestUserTagDelete(
+                                    '{{ key }}')">
+                            🗑
+                        </button>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="p-3 text-muted small">
+            ⚠️ No tags on this VM — consider adding CAF standard
+            tags for governance and cost tracking.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Tag Add/Update Modal -->
+<div class="modal fade" id="userTagModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">🏷️ Add / Update Tag</h5>
+                <button type="button"
+                        class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning py-2">
+                    ⚠️ Requires <strong>2 approvals</strong>.
+                    A ServiceNow CR will be auto-created.
+                </div>
+                <!-- CAF key dropdown + free-text input -->
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">
+                        Tag Key
+                    </label>
+                    <div class="input-group input-group-sm">
+                        <input type="text"
+                               class="form-control"
+                               id="userTagKey"
+                               placeholder="e.g. Environment">
+                        <button class="btn btn-outline-secondary
+                                       dropdown-toggle"
+                                type="button"
+                                data-bs-toggle="dropdown">
+                            CAF Keys
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            {% for key in standard_tags.keys() %}
+                            <li>
+                                <a class="dropdown-item" href="#"
+                                   onclick="pickUserTagKey(
+                                       '{{ key }}');
+                                       return false;">
+                                    {{ key }}
+                                </a>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">
+                        Tag Value
+                    </label>
+                    <input type="text"
+                           class="form-control"
+                           id="userTagValue"
+                           placeholder="e.g. Production">
+                    <!-- Suggested values injected by JS -->
+                    <div id="userTagSuggestions" class="mt-2"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-bs-dismiss="modal">Cancel</button>
+                <button type="button"
+                        class="btn btn-primary"
+                        onclick="submitUserTagUpdate()">
+                    Submit for Approval
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Timezone Management Card -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-dark text-white
+                d-flex justify-content-between align-items-center">
+        <span>🕐 Timezone Management</span>
+        {% if session.get('portal_role') in
+              ['operator', 'contributor', 'admin'] %}
+        <button class="btn btn-primary btn-sm"
+                onclick="openTimezoneModal()">
+            Change Timezone
+        </button>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <div class="row align-items-center">
+            <div class="col-md-7">
+                <p class="mb-1">
+                    <strong>OS Type:</strong>
+                    {% if vm_info.os_type == 'Linux' %}
+                        <span class="badge bg-warning text-dark ms-1">
+                            🐧 Linux
+                        </span>
+                        <small class="text-muted ms-2">
+                            Uses IANA timezone names
+                            (e.g. America/New_York)
+                        </small>
+                    {% else %}
+                        <span class="badge bg-primary ms-1">
+                            🪟 Windows
+                        </span>
+                        <small class="text-muted ms-2">
+                            Uses Windows TZ IDs
+                            (e.g. Eastern Standard Time)
+                        </small>
+                    {% endif %}
+                </p>
+                <p class="mb-0 text-muted small">
+                    ⚠️ VM must be <strong>Running</strong> for
+                    timezone changes to apply.
+                    Requires 2 approvals before executing.
+                </p>
+            </div>
+            {% if session.get('portal_role')
+                   not in ['operator', 'contributor', 'admin'] %}
+            <div class="col-md-5">
+                <span class="badge bg-secondary">
+                    👁️ View Only — Operator role required
+                </span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Timezone Modal -->
+<div class="modal fade" id="timezoneModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    🕐 Change Timezone — {{ vm_name }}
+                </h5>
+                <button type="button"
+                        class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning py-2">
+                    ⚠️ Requires <strong>2 approvals</strong>.
+                    A ServiceNow CR will be auto-created.
+                    VM must be <strong>Running</strong>.
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">
+                        Select Timezone
+                    </label>
+                    <select class="form-select" id="tzSelect"
+                            onchange="onTzChange(this)">
+                        <option value="">
+                            -- Select Timezone --
+                        </option>
+                        {% for tz in timezones %}
+                        <option
+                            value="{{ tz.linux if vm_info.os_type == 'Linux' else tz.windows }}"
+                            data-label="{{ tz.label }}">
+                            {{ tz.label }}
+                            —
+                            {{ tz.linux if vm_info.os_type == 'Linux'
+                                        else tz.windows }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div id="tzPreview" class="text-muted small"
+                     style="display:none;">
+                    TZ ID to apply:
+                    <code id="tzIdPreview"></code>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-bs-dismiss="modal">Cancel</button>
+                <button type="button"
+                        class="btn btn-primary"
+                        onclick="submitTimezoneRequest()">
+                    Submit for Approval
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- Performance Metrics Card                                   -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="card shadow-sm mb-4" id="metricsCard">
+    <div class="card-header bg-dark text-white d-flex
+                justify-content-between align-items-center">
+        <span>📈 Performance Metrics</span>
+        <div class="d-flex align-items-center gap-2">
+            <div class="btn-group btn-group-sm" role="group"
+                 id="metricsRangeGroup">
+                <button type="button"
+                        class="btn btn-outline-light active"
+                        onclick="loadMetrics(1)">1h</button>
+                <button type="button"
+                        class="btn btn-outline-light"
+                        onclick="loadMetrics(6)">6h</button>
+                <button type="button"
+                        class="btn btn-outline-light"
+                        onclick="loadMetrics(24)">24h</button>
+            </div>
+            <button class="btn btn-sm btn-outline-light"
+                    id="metricsRefreshBtn"
+                    onclick="loadMetrics(currentMetricHours)">
+                🔄
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- Loading state -->
+        <div id="metricsLoading" class="text-center py-4">
+            <div class="spinner-border text-primary mb-2"
+                 style="width:2rem; height:2rem;"></div>
+            <p class="text-muted small mb-0">
+                Fetching metrics from Azure Monitor...
+            </p>
+        </div>
+        <!-- Error state -->
+        <div id="metricsError"
+             class="alert alert-warning d-none" role="alert">
+        </div>
+        <!-- Charts grid -->
+        <div id="metricsCharts" class="d-none">
+            <div class="row g-3">
+                <!-- CPU -->
+                <div class="col-md-6">
+                    <div class="card border">
+                        <div class="card-header py-1 px-3
+                                    bg-light d-flex
+                                    justify-content-between">
+                            <small class="fw-semibold">
+                                🖥️ CPU Usage
+                            </small>
+                            <small class="text-muted"
+                                   id="cpuAvg"></small>
+                        </div>
+                        <div class="card-body py-2 px-3">
+                            <canvas id="cpuChart"
+                                    height="120"></canvas>
+                            <div id="cpuNoData"
+                                 class="text-muted text-center
+                                        small d-none py-3">
+                                No CPU data in time window
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Memory -->
+                <div class="col-md-6">
+                    <div class="card border">
+                        <div class="card-header py-1 px-3
+                                    bg-light d-flex
+                                    justify-content-between">
+                            <small class="fw-semibold">
+                                🧠 Memory Available
+                            </small>
+                            <small class="text-muted"
+                                   id="memAvg"></small>
+                        </div>
+                        <div class="card-body py-2 px-3">
+                            <canvas id="memChart"
+                                    height="120"></canvas>
+                            <div id="memNoData"
+                                 class="text-muted text-center
+                                        small d-none py-3">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Disk I/O -->
+                <div class="col-md-6">
+                    <div class="card border">
+                        <div class="card-header py-1 px-3
+                                    bg-light">
+                            <small class="fw-semibold">
+                                💾 Disk I/O (MB)
+                            </small>
+                        </div>
+                        <div class="card-body py-2 px-3">
+                            <canvas id="diskChart"
+                                    height="120"></canvas>
+                            <div id="diskNoData"
+                                 class="text-muted text-center
+                                        small d-none py-3">
+                                No disk I/O data in time window
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Network -->
+                <div class="col-md-6">
+                    <div class="card border">
+                        <div class="card-header py-1 px-3
+                                    bg-light">
+                            <small class="fw-semibold">
+                                🌐 Network (MB)
+                            </small>
+                        </div>
+                        <div class="card-body py-2 px-3">
+                            <canvas id="netChart"
+                                    height="120"></canvas>
+                            <div id="netNoData"
+                                 class="text-muted text-center
+                                        small d-none py-3">
+                                No network data in time window
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <p class="text-muted small mt-2 mb-0">
+                <i class="me-1">ℹ️</i>
+                Data from Azure Monitor. 5-min averages for 1h/6h;
+                1-hour averages for 24h. Memory requires Azure
+                Monitor Agent (AMA).
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- Patch Management Card                                      -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-dark text-white d-flex
+                justify-content-between align-items-center">
+        <span>
+            <i class="fas fa-shield-alt me-2"></i>
+            Patch Management
+        </span>
+        {% if session.get('portal_role') in
+              ['operator', 'contributor', 'admin'] %}
+        <div class="dropdown">
+            <button class="btn btn-sm btn-outline-light
+                           dropdown-toggle"
+                    type="button"
+                    data-bs-toggle="dropdown">
+                <i class="fas fa-tools me-1"></i>
+                Patch Actions
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li>
+                    <a class="dropdown-item" href="#"
+                       onclick="openPatchAssessModal();
+                                return false;">
+                        <i class="fas fa-search-plus me-2"></i>
+                        Trigger Assessment
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="#"
+                       onclick="openPatchInstallModal();
+                                return false;">
+                        <i class="fas fa-download me-2"></i>
+                        Install Patches
+                    </a>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <a class="dropdown-item" href="#"
+                       onclick="openPatchModeModal();
+                                return false;">
+                        <i class="fas fa-cog me-2"></i>
+                        Configure Patch Mode
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="#"
+                       onclick="requestPatchReboot();
+                                return false;">
+                        <i class="fas fa-redo me-2"></i>
+                        Reboot for Patches
+                    </a>
+                </li>
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+    <div class="card-body">
+
+        {% if patch_config.status == 'aum_not_enabled' %}
+        <div class="alert alert-warning mb-3">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <strong>Azure Update Manager not enabled</strong> —
+            Patch mode is
+            <code>{{ patch_config.patch_mode }}</code>.
+            Enable <code>AutomaticByPlatform</code>
+            to unlock AUM features.
+        </div>
+        {% elif patch_config.status == 'error' %}
+        <div class="alert alert-danger mb-3">
+            <i class="fas fa-times-circle me-2"></i>
+            {{ patch_config.error }}
+        </div>
+        {% else %}
+        <div class="alert alert-success mb-3">
+            <i class="fas fa-check-circle me-2"></i>
+            <strong>AUM Enabled</strong> — Patch mode:
+            <code>AutomaticByPlatform</code>
+        </div>
+        {% endif %}
+
+        <div class="row g-3">
+            <div class="col-md-6">
+                <table class="table table-sm table-bordered mb-0">
+                    <tbody>
+                        <tr>
+                            <th class="table-light" width="50%">
+                                Patch Mode
+                            </th>
+                            <td>
+                                {% if patch_config.aum_enabled %}
+                                <span class="badge bg-success">
+                                    AutomaticByPlatform
+                                </span>
+                                {% elif patch_config.patch_mode
+                                       == 'Unknown' %}
+                                <span class="badge bg-secondary">
+                                    Unknown
+                                </span>
+                                {% else %}
+                                <span class="badge bg-warning
+                                            text-dark">
+                                    {{ patch_config.patch_mode }}
+                                </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <th class="table-light">
+                                Assessment Mode
+                            </th>
+                            <td>
+                                {% if patch_config.auto_assess %}
+                                <span class="badge bg-success">
+                                    AutomaticByPlatform
+                                </span>
+                                {% else %}
+                                <span class="badge bg-secondary">
+                                    {{ patch_config.assessment_mode }}
+                                </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <th class="table-light">OS Type</th>
+                            <td>
+                                {% if patch_config.os_type == 'Linux' %}
+                                <span class="badge bg-warning text-dark">
+                                    🐧 Linux
+                                </span>
+                                {% elif patch_config.os_type
+                                       == 'Windows' %}
+                                <span class="badge bg-primary">
+                                    🪟 Windows
+                                </span>
+                                {% else %}
+                                <span class="badge bg-secondary">
+                                    {{ patch_config.os_type }}
+                                </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <th class="table-light">
+                                Patch Ring
+                            </th>
+                            <td>
+                                {% if patch_config.ring %}
+                                <span class="badge bg-info">
+                                    {{ patch_config.ring }}
+                                </span>
+                                {% else %}
+                                <span class="text-muted small">
+                                    Not set
+                                    <small class="d-block">
+                                        Add tag
+                                        <code>PatchRing</code>
+                                        to assign
+                                    </small>
+                                </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="col-md-6">
+                {% if not patch_config.aum_enabled %}
+                <div class="border rounded p-3 h-100 bg-light
+                            text-muted small">
+                    <strong>
+                        <i class="fas fa-info-circle me-1"></i>
+                        Enabling AUM gives you:
+                    </strong>
+                    <ul class="mt-2 mb-0 ps-3">
+                        <li>Automated patch compliance tracking</li>
+                        <li>Scheduled maintenance windows</li>
+                        <li>Patch ring deployment control</li>
+                        <li>Guest OS assessment on schedule</li>
+                    </ul>
+                    {% if session.get('portal_role') in
+                          ['operator', 'contributor', 'admin'] %}
+                    <button class="btn btn-sm btn-outline-primary mt-2"
+                            onclick="openPatchModeModal()">
+                        <i class="fas fa-cog me-1"></i>
+                        Enable AUM Now
+                    </button>
+                    {% endif %}
+                </div>
+                {% else %}
+                <div class="border rounded p-3 h-100 bg-light
+                            text-muted small">
+                    <strong>
+                        <i class="fas fa-check-circle
+                                  text-success me-1"></i>
+                        AUM is active
+                    </strong>
+                    <ul class="mt-2 mb-0 ps-3">
+                        <li>
+                            Auto-assessment:
+                            {% if patch_config.auto_assess %}
+                            <span class="text-success">On</span>
+                            {% else %}
+                            <span class="text-warning">Off</span>
+                            {% endif %}
+                        </li>
+                        <li>Trigger assessment to refresh patch data</li>
+                        <li>
+                            View results in Azure Portal →
+                            Update Manager
+                        </li>
+                    </ul>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if session.get('portal_role') not in
+              ['operator', 'contributor', 'admin'] %}
+        <div class="mt-3">
+            <span class="badge bg-secondary">
+                👁️ View Only — Operator role required
+            </span>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Patch Assessment Modal -->
+<div class="modal fade" id="patchAssessModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-search-plus me-2"></i>
+                    Trigger Patch Assessment — {{ vm_name }}
+                </h5>
+                <button type="button"
+                        class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-1"></i>
+                    Requires <strong>2 approvals</strong>.
+                    VM must be <strong>Running</strong>.
+                    Assessment takes ~5-10 minutes. Results appear
+                    in Azure Portal → Update Manager.
+                </div>
+                <p class="mb-0 small text-muted">
+                    Triggers a guest OS scan to discover available
+                    patches. No patches are installed.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-bs-dismiss="modal">Cancel</button>
+                <button type="button"
+                        class="btn btn-dark"
+                        onclick="submitPatchAction('patch_assess')">
+                    <i class="fas fa-paper-plane me-1"></i>
+                    Submit for Approval
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Patch Install Modal -->
+<div class="modal fade" id="patchInstallModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-download me-2"></i>
+                    Install Patches — {{ vm_name }}
+                </h5>
+                <button type="button"
+                        class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-1"></i>
+                    Requires <strong>2 approvals</strong>.
+                    VM must be <strong>Running</strong>.
+                    May trigger a <strong>reboot</strong>
+                    depending on reboot setting.
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">
+                        Classifications to Install
+                    </label>
+                    <div id="classCheckboxes">
+                        {% set classifications =
+                            patch_config.windows_classifications
+                            if patch_config.os_type == 'Windows'
+                            else patch_config.linux_classifications %}
+                        {% for cls in classifications %}
+                        <div class="form-check">
+                            <input class="form-check-input
+                                          patch-class-check"
+                                   type="checkbox"
+                                   value="{{ cls }}"
+                                   id="cls_{{ loop.index }}"
+                                   {% if cls in
+                                      ['Critical', 'Security'] %}
+                                   checked{% endif %}>
+                            <label class="form-check-label"
+                                   for="cls_{{ loop.index }}">
+                                {{ cls }}
+                            </label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">
+                        Reboot Setting
+                    </label>
+                    <select class="form-select form-select-sm"
+                            id="patchRebootSelect">
+                        {% for opt in patch_config.reboot_options %}
+                        <option value="{{ opt.value }}"
+                                {% if opt.value == 'IfRequired' %}
+                                selected{% endif %}>
+                            {{ opt.label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-bs-dismiss="modal">Cancel</button>
+                <button type="button"
+                        class="btn btn-danger"
+                        onclick="submitPatchInstall()">
+                    <i class="fas fa-paper-plane me-1"></i>
+                    Submit for Approval
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Patch Mode Modal -->
+<div class="modal fade" id="patchModeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-cog me-2"></i>
+                    Configure Patch Mode — {{ vm_name }}
+                </h5>
+                <button type="button"
+                        class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-1"></i>
+                    Requires <strong>2 approvals</strong>.
+                    Does <strong>not</strong> require VM restart.
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">
+                        Select Patch Mode
+                    </label>
+                    <select class="form-select form-select-sm"
+                            id="patchModeSelect">
+                        <option value="AutomaticByPlatform">
+                            AutomaticByPlatform — AUM managed
+                            (recommended)
+                        </option>
+                        {% if patch_config.os_type == 'Windows' %}
+                        <option value="AutomaticByOS">
+                            AutomaticByOS — Windows Update managed
+                        </option>
+                        <option value="Manual">
+                            Manual — No automatic patching
+                        </option>
+                        {% else %}
+                        <option value="ImageDefault">
+                            ImageDefault — Use image defaults
+                        </option>
+                        {% endif %}
+                    </select>
+                </div>
+                <p class="small text-muted mb-0">
+                    Setting to
+                    <code>AutomaticByPlatform</code>
+                    also enables automatic assessment scheduling.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-bs-dismiss="modal">Cancel</button>
+                <button type="button"
+                        class="btn btn-dark"
+                        onclick="submitPatchMode()">
+                    <i class="fas fa-paper-plane me-1"></i>
+                    Submit for Approval
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Disks Section -->
 <div class="card shadow-sm mb-4">
@@ -242,6 +1553,10 @@
     </div>
 </div>
 
+<!-- JSON data islands — avoids Jinja2 syntax inside JS blocks -->
+<script type="application/json" id="data-standard-tags">{{ standard_tags | tojson }}</script>
+<script type="application/json" id="data-dns-nics">{{ dns_config.nics | tojson }}</script>
+
 <!-- Loading Spinner -->
 <div id="loadingOverlay"
      style="display:none; position:fixed; top:0; left:0;
@@ -259,9 +1574,271 @@
     </div>
 </div>
 
+<!-- Chart.js for Performance Metrics -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
 <script>
     const VM_NAME        = '{{ vm_name }}';
     const RESOURCE_GROUP = '{{ resource_group }}';
+
+    // CAF tag schema passed from Python — used for value suggestions
+    const STANDARD_TAGS = JSON.parse(
+        document.getElementById('data-standard-tags').textContent
+    );
+
+    const OS_TYPE  = '{{ vm_info.os_type }}';
+    const DNS_NICS = JSON.parse(
+        document.getElementById('data-dns-nics').textContent
+    );
+
+    // ── DNS — Hostname Modal ──────────────────────────────────
+    function openHostnameModal() {
+        document.getElementById('newHostname').value = '';
+        new bootstrap.Modal(
+            document.getElementById('hostnameModal')
+        ).show();
+    }
+
+    function submitHostnameChange() {
+        const newHost = document.getElementById('newHostname')
+                                .value.trim();
+        if (!newHost) {
+            alert('Enter a new hostname.');
+            return;
+        }
+
+        bootstrap.Modal.getInstance(
+            document.getElementById('hostnameModal')
+        ).hide();
+        showLoading('Submitting hostname change approval...',
+                    'Notifying approvers via email and ServiceNow');
+
+        const fd = new FormData();
+        fd.append('vm_name',        VM_NAME);
+        fd.append('resource_group', RESOURCE_GROUP);
+        fd.append('action',         'dns_hostname_change');
+        fd.append('os_type',        OS_TYPE);
+        fd.append('new_hostname',   newHost);
+        submitRequest('/vm/dns/action', fd);
+    }
+
+    // ── DNS — DNS Servers Modal ───────────────────────────────
+    function openDnsServersModal() {
+        new bootstrap.Modal(
+            document.getElementById('dnsServersModal')
+        ).show();
+    }
+
+    function submitDnsServers() {
+        let nicName, nicRg;
+        const nicSel = document.getElementById('dnsNicSelect');
+        if (nicSel) {
+            const parts = nicSel.value.split('|');
+            nicName = parts[0];
+            nicRg   = parts[1];
+        } else if (DNS_NICS.length > 0) {
+            nicName = DNS_NICS[0].nic_name;
+            nicRg   = DNS_NICS[0].nic_rg;
+        } else {
+            alert('No NIC found for this VM.');
+            return;
+        }
+
+        const servers = document.getElementById('dnsServersInput')
+                                .value.trim();
+
+        bootstrap.Modal.getInstance(
+            document.getElementById('dnsServersModal')
+        ).hide();
+        showLoading('Submitting DNS server update approval...',
+                    'Notifying approvers via email and ServiceNow');
+
+        const fd = new FormData();
+        fd.append('vm_name',        VM_NAME);
+        fd.append('resource_group', RESOURCE_GROUP);
+        fd.append('action',         'dns_server_update');
+        fd.append('nic_name',       nicName);
+        fd.append('nic_rg',         nicRg);
+        fd.append('dns_servers',    servers);
+        submitRequest('/vm/dns/action', fd);
+    }
+
+    // ── DNS — Search Suffix Modal ─────────────────────────────
+    function openDnsSuffixModal() {
+        document.getElementById('dnsSuffixInput').value = '';
+        new bootstrap.Modal(
+            document.getElementById('dnsSuffixModal')
+        ).show();
+    }
+
+    function submitDnsSuffix() {
+        const suffixes = document.getElementById('dnsSuffixInput')
+                                 .value.trim();
+        if (!suffixes) {
+            alert('Enter at least one search suffix.');
+            return;
+        }
+
+        bootstrap.Modal.getInstance(
+            document.getElementById('dnsSuffixModal')
+        ).hide();
+        showLoading('Submitting DNS suffix update approval...',
+                    'Notifying approvers via email and ServiceNow');
+
+        const fd = new FormData();
+        fd.append('vm_name',        VM_NAME);
+        fd.append('resource_group', RESOURCE_GROUP);
+        fd.append('action',         'dns_suffix_change');
+        fd.append('os_type',        OS_TYPE);
+        fd.append('dns_suffixes',   suffixes);
+        submitRequest('/vm/dns/action', fd);
+    }
+
+    // ── Timezone Modal ────────────────────────────────────────
+    function openTimezoneModal() {
+        document.getElementById('tzSelect').value = '';
+        document.getElementById('tzPreview').style.display = 'none';
+        new bootstrap.Modal(
+            document.getElementById('timezoneModal')
+        ).show();
+    }
+
+    function onTzChange(sel) {
+        const val = sel.value;
+        if (val) {
+            document.getElementById('tzIdPreview').textContent = val;
+            document.getElementById('tzPreview').style.display = 'block';
+        } else {
+            document.getElementById('tzPreview').style.display = 'none';
+        }
+    }
+
+    function submitTimezoneRequest() {
+        const sel   = document.getElementById('tzSelect');
+        const tzId  = sel.value;
+        const tzLbl = sel.options[sel.selectedIndex]
+                         ?.getAttribute('data-label') || tzId;
+
+        if (!tzId) {
+            alert('Please select a timezone.');
+            return;
+        }
+
+        bootstrap.Modal.getInstance(
+            document.getElementById('timezoneModal')
+        ).hide();
+
+        showLoading(
+            'Submitting timezone change approval...',
+            'Notifying approvers via email and ServiceNow'
+        );
+
+        const fd = new FormData();
+        fd.append('vm_name',        VM_NAME);
+        fd.append('resource_group', RESOURCE_GROUP);
+        fd.append('os_type',        OS_TYPE);
+        fd.append('timezone_id',    tzId);
+        fd.append('timezone_label', tzLbl);
+
+        submitRequest('/vm/timezone/action', fd);
+    }
+
+    // ── Open user tag modal — optionally pre-fill for edit ───
+    function openUserTagModal(key = '', value = '') {
+        document.getElementById('userTagKey').value   = key;
+        document.getElementById('userTagValue').value = value;
+        // Load suggestions if editing an existing CAF key
+        if (key) pickUserTagKey(key);
+        new bootstrap.Modal(
+            document.getElementById('userTagModal')
+        ).show();
+    }
+
+    // ── Fill key field and show CAF value suggestions ─────────
+    function pickUserTagKey(key) {
+        document.getElementById('userTagKey').value = key;
+        const values = STANDARD_TAGS[key] || [];
+        if (values.length > 0) {
+            const btns = values.map(v =>
+                `<button type="button"
+                         class="btn btn-outline-secondary btn-sm
+                                me-1 mb-1"
+                         onclick="document.getElementById(
+                             'userTagValue').value='${v}'">
+                     ${v}
+                 </button>`
+            ).join('');
+            document.getElementById('userTagSuggestions').innerHTML =
+                `<small class="text-muted">Suggested: </small>${btns}`;
+        } else {
+            document.getElementById('userTagSuggestions').innerHTML = '';
+        }
+    }
+
+    // ── Submit tag update via approval workflow ───────────────
+    function submitUserTagUpdate() {
+        const key   = document.getElementById('userTagKey')
+                              .value.trim();
+        const value = document.getElementById('userTagValue')
+                              .value.trim();
+        if (!key || !value) {
+            alert('Enter both a tag key and value.');
+            return;
+        }
+        bootstrap.Modal.getInstance(
+            document.getElementById('userTagModal')
+        ).hide();
+
+        showLoading('Submitting tag approval...',
+                    'Notifying approvers via email and ServiceNow');
+
+        const fd = new FormData();
+        fd.append('vm_name',        VM_NAME);
+        fd.append('resource_group', RESOURCE_GROUP);
+        fd.append('action',         'tag_update');
+        fd.append('tag_key',        key);
+        fd.append('tag_value',      value);
+
+        submitRequest('/vm/tag/action', fd);
+    }
+
+    // ── Submit tag delete via approval workflow ───────────────
+    function requestUserTagDelete(tagKey) {
+        if (!confirm(
+            `Request deletion of tag "${tagKey}"?\n\n` +
+            `Requires 2 approvals and a ServiceNow CR.`
+        )) return;
+
+        showLoading('Submitting tag delete approval...',
+                    'Notifying approvers via email and ServiceNow');
+
+        const fd = new FormData();
+        fd.append('vm_name',        VM_NAME);
+        fd.append('resource_group', RESOURCE_GROUP);
+        fd.append('action',         'tag_delete');
+        fd.append('tag_key',        tagKey);
+
+        submitRequest('/vm/tag/action', fd);
+    }
+
+    // ── Clipboard helper ──────────────────────────────────────
+    function copyToClipboard(inputId) {
+        const el = document.getElementById(inputId);
+        navigator.clipboard.writeText(el.value).then(() => {
+            document.getElementById('alertBox').innerHTML = `
+                <div class="alert alert-success
+                            alert-dismissible fade show py-2">
+                    📋 Copied to clipboard!
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="alert"></button>
+                </div>`;
+            setTimeout(() => {
+                const box = document.getElementById('alertBox');
+                if (box) box.innerHTML = '';
+            }, 2000);
+        });
+    }
 
     // ── Attach Disk ───────────────────────────────────────────
     function showAttachModal() {
@@ -488,5 +2065,334 @@
         document.getElementById('loadingOverlay').style.display =
             'none';
     }
+
+    // ── Patch Management ──────────────────────────────────────
+
+    function openPatchAssessModal() {
+        new bootstrap.Modal(
+            document.getElementById('patchAssessModal')
+        ).show();
+    }
+
+    function openPatchInstallModal() {
+        new bootstrap.Modal(
+            document.getElementById('patchInstallModal')
+        ).show();
+    }
+
+    function openPatchModeModal() {
+        new bootstrap.Modal(
+            document.getElementById('patchModeModal')
+        ).show();
+    }
+
+    function submitPatchAction(action) {
+        bootstrap.Modal.getInstance(
+            document.getElementById(
+                action === 'patch_assess'
+                    ? 'patchAssessModal'
+                    : 'patchModeModal'
+            )
+        )?.hide();
+
+        showLoading(
+            'Submitting patch approval...',
+            'Notifying approvers...'
+        );
+
+        const fd = new FormData();
+        fd.append('vm_name',        VM_NAME);
+        fd.append('resource_group', RESOURCE_GROUP);
+        fd.append('action',         action);
+        fd.append('os_type',        OS_TYPE);
+
+        submitRequest('/vm/patch/action', fd);
+    }
+
+    function submitPatchInstall() {
+        const checks = [
+            ...document.querySelectorAll(
+                '.patch-class-check:checked'
+            )
+        ];
+        if (checks.length === 0) {
+            alert('Select at least one classification.');
+            return;
+        }
+        const classifications = checks.map(c => c.value).join(',');
+        const rebootSetting   = document.getElementById(
+            'patchRebootSelect'
+        ).value;
+
+        bootstrap.Modal.getInstance(
+            document.getElementById('patchInstallModal')
+        )?.hide();
+
+        showLoading(
+            'Submitting patch install approval...',
+            'Notifying approvers...'
+        );
+
+        const fd = new FormData();
+        fd.append('vm_name',         VM_NAME);
+        fd.append('resource_group',  RESOURCE_GROUP);
+        fd.append('action',          'patch_install');
+        fd.append('os_type',         OS_TYPE);
+        fd.append('classifications', classifications);
+        fd.append('reboot_setting',  rebootSetting);
+
+        submitRequest('/vm/patch/action', fd);
+    }
+
+    function submitPatchMode() {
+        const mode = document.getElementById(
+            'patchModeSelect'
+        ).value;
+
+        bootstrap.Modal.getInstance(
+            document.getElementById('patchModeModal')
+        )?.hide();
+
+        showLoading(
+            'Submitting patch mode change approval...',
+            'Notifying approvers...'
+        );
+
+        const fd = new FormData();
+        fd.append('vm_name',        VM_NAME);
+        fd.append('resource_group', RESOURCE_GROUP);
+        fd.append('action',         'patch_mode_set');
+        fd.append('os_type',        OS_TYPE);
+        fd.append('patch_mode',     mode);
+
+        submitRequest('/vm/patch/action', fd);
+    }
+
+    function requestPatchReboot() {
+        if (!confirm(
+            `Request reboot of '${VM_NAME}' for pending patches?\n\n`
+            + `Requires 2 approvals. The VM will restart.`
+        )) return;
+
+        showLoading(
+            'Submitting reboot approval...',
+            'Notifying approvers...'
+        );
+
+        const fd = new FormData();
+        fd.append('vm_name',        VM_NAME);
+        fd.append('resource_group', RESOURCE_GROUP);
+        fd.append('action',         'patch_reboot');
+
+        submitRequest('/vm/patch/action', fd);
+    }
+
+    // ── Performance Metrics ───────────────────────────────────
+
+    let currentMetricHours = 1;
+    let cpuChartObj  = null;
+    let memChartObj  = null;
+    let diskChartObj = null;
+    let netChartObj  = null;
+
+    function makeLineChart(canvasId, labels, datasets) {
+        const ctx = document.getElementById(canvasId);
+        if (!ctx) return null;
+        return new Chart(ctx, {
+            type: 'line',
+            data: { labels, datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: { legend: { position: 'bottom' } },
+                scales: {
+                    x: { ticks: { maxTicksLimit: 8,
+                                  font: { size: 10 } } },
+                    y: { beginAtZero: true,
+                         ticks: { font: { size: 10 } } }
+                },
+                elements: { point: { radius: 2 } }
+            }
+        });
+    }
+
+    function destroyCharts() {
+        [cpuChartObj, memChartObj, diskChartObj, netChartObj]
+            .forEach(c => c && c.destroy());
+        cpuChartObj = memChartObj =
+            diskChartObj = netChartObj = null;
+    }
+
+    function showEl(id)   {
+        document.getElementById(id)?.classList.remove('d-none');
+    }
+    function hideEl(id)   {
+        document.getElementById(id)?.classList.add('d-none');
+    }
+
+    function setRangeActive(hours) {
+        document.querySelectorAll(
+            '#metricsRangeGroup button'
+        ).forEach(b => b.classList.remove('active'));
+        const labels = { 1: '1h', 6: '6h', 24: '24h' };
+        document.querySelectorAll(
+            '#metricsRangeGroup button'
+        ).forEach(b => {
+            if (b.textContent.trim() === labels[hours]) {
+                b.classList.add('active');
+            }
+        });
+    }
+
+    async function loadMetrics(hours) {
+        currentMetricHours = hours;
+        setRangeActive(hours);
+
+        showEl('metricsLoading');
+        hideEl('metricsCharts');
+        hideEl('metricsError');
+        destroyCharts();
+
+        let data;
+        try {
+            const resp = await fetch(
+                `/vm/metrics/${VM_NAME}` +
+                `?rg=${encodeURIComponent(RESOURCE_GROUP)}` +
+                `&hours=${hours}`
+            );
+            data = await resp.json();
+        } catch (e) {
+            hideEl('metricsLoading');
+            showEl('metricsError');
+            document.getElementById('metricsError')
+                .textContent = '❌ Could not reach metrics API: '
+                               + e.message;
+            return;
+        }
+
+        hideEl('metricsLoading');
+
+        if (data.error) {
+            showEl('metricsError');
+            document.getElementById('metricsError')
+                .textContent = '⚠️ ' + data.error;
+            return;
+        }
+
+        showEl('metricsCharts');
+
+        // CPU chart
+        if (data.cpu?.available) {
+            hideEl('cpuNoData');
+            const avg = data.cpu.values.length
+                ? (data.cpu.values.reduce((a,b)=>a+b,0) /
+                   data.cpu.values.length).toFixed(1)
+                : '—';
+            document.getElementById('cpuAvg').textContent =
+                `avg ${avg}%`;
+            cpuChartObj = makeLineChart(
+                'cpuChart',
+                data.cpu.timestamps,
+                [{
+                    label:           'CPU %',
+                    data:            data.cpu.values,
+                    borderColor:     '#0078d4',
+                    backgroundColor: 'rgba(0,120,212,0.1)',
+                    fill:            true,
+                    tension:         0.3,
+                }]
+            );
+        } else {
+            showEl('cpuNoData');
+        }
+
+        // Memory chart
+        if (data.memory?.available) {
+            hideEl('memNoData');
+            const avg = data.memory.values.length
+                ? (data.memory.values.reduce((a,b)=>a+b,0) /
+                   data.memory.values.length).toFixed(2)
+                : '—';
+            document.getElementById('memAvg').textContent =
+                `avg ${avg} GB`;
+            memChartObj = makeLineChart(
+                'memChart',
+                data.memory.timestamps,
+                [{
+                    label:           'Available GB',
+                    data:            data.memory.values,
+                    borderColor:     '#28a745',
+                    backgroundColor: 'rgba(40,167,69,0.1)',
+                    fill:            true,
+                    tension:         0.3,
+                }]
+            );
+        } else {
+            const el = document.getElementById('memNoData');
+            el.classList.remove('d-none');
+            el.textContent = data.memory?.reason ||
+                '⚠️ Azure Monitor Agent (AMA) not installed — ' +
+                'memory metrics unavailable.';
+        }
+
+        // Disk I/O chart
+        if (data.disk_read?.available || data.disk_write?.available) {
+            hideEl('diskNoData');
+            const labels = data.disk_read?.timestamps ||
+                           data.disk_write?.timestamps || [];
+            diskChartObj = makeLineChart('diskChart', labels, [
+                {
+                    label:           'Read MB',
+                    data:            data.disk_read?.values || [],
+                    borderColor:     '#fd7e14',
+                    backgroundColor: 'rgba(253,126,20,0.08)',
+                    fill:            false,
+                    tension:         0.3,
+                },
+                {
+                    label:           'Write MB',
+                    data:            data.disk_write?.values || [],
+                    borderColor:     '#dc3545',
+                    backgroundColor: 'rgba(220,53,69,0.08)',
+                    fill:            false,
+                    tension:         0.3,
+                },
+            ]);
+        } else {
+            showEl('diskNoData');
+        }
+
+        // Network chart
+        if (data.net_in?.available || data.net_out?.available) {
+            hideEl('netNoData');
+            const labels = data.net_in?.timestamps ||
+                           data.net_out?.timestamps || [];
+            netChartObj = makeLineChart('netChart', labels, [
+                {
+                    label:           'In MB',
+                    data:            data.net_in?.values || [],
+                    borderColor:     '#6610f2',
+                    backgroundColor: 'rgba(102,16,242,0.08)',
+                    fill:            false,
+                    tension:         0.3,
+                },
+                {
+                    label:           'Out MB',
+                    data:            data.net_out?.values || [],
+                    borderColor:     '#20c997',
+                    backgroundColor: 'rgba(32,201,151,0.08)',
+                    fill:            false,
+                    tension:         0.3,
+                },
+            ]);
+        } else {
+            showEl('netNoData');
+        }
+    }
+
+    // Auto-load on page ready
+    document.addEventListener('DOMContentLoaded',
+        () => loadMetrics(1)
+    );
 </script>
 {% endblock %}
