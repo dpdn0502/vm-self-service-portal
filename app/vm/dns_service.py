@@ -77,7 +77,7 @@ def get_vm_dns_config(resource_group, vm_name):
                     'internal_fqdn':          dns.internal_fqdn or '',
                 })
             except Exception as e:
-                print(f"⚠️ Could not fetch NIC {nic_name}: {e}")
+                print(f"[WARN] Could not fetch NIC {nic_name}: {e}")
                 nics.append({
                     'nic_name':               nic_name,
                     'nic_rg':                 nic_rg,
@@ -125,7 +125,7 @@ def update_nic_dns_servers(nic_rg, nic_name, dns_servers):
     else:
         msg = f"DNS servers on NIC '{nic_name}' reset to Azure / VNET default"
 
-    print(f"✅ {msg}")
+    print(f"[OK] {msg}")
     return msg
 
 
@@ -171,7 +171,7 @@ def change_vm_hostname(resource_group, vm_name, os_type, new_hostname):
     note = ' (Windows will restart to apply change)' \
            if os_type == 'Windows' else ''
     msg = f"Hostname changed to '{new_hostname}' on '{vm_name}'{note}"
-    print(f"✅ {msg}")
+    print(f"[OK] {msg}")
     return msg
 
 
@@ -222,5 +222,5 @@ def update_dns_search_suffix(resource_group, vm_name,
         f"DNS search suffixes on '{vm_name}' "
         f"set to: {', '.join(suffixes)}"
     )
-    print(f"✅ {msg}")
+    print(f"[OK] {msg}")
     return msg

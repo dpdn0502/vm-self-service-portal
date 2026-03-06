@@ -29,7 +29,10 @@ def create_app():
     app.register_blueprint(decom_bp)
 
     with app.app_context():
-        db.create_all()
+        try:
+            db.create_all()
+        except Exception as e:
+            print(f"[WARN] db.create_all skipped: {e}")
 
     @app.route('/')
     def home():

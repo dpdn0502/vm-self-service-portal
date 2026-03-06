@@ -97,9 +97,9 @@ def callback():
             object_id, user_email
         )
         session['portal_role'] = portal_role
-        print(f"✅ Portal role set: {portal_role}")
+        print(f"[OK] Portal role set: {portal_role}")
     except Exception as e:
-        print(f"⚠️ Role lookup failed: {e}")
+        print(f"[WARN] Role lookup failed: {e}")
         session['portal_role'] = 'reader'
     # ─────────────────────────────────────────────────────────
 
@@ -135,7 +135,7 @@ def test_login(role):
     session['portal_role']  = user['role']
     session['access_token'] = 'test-token'
 
-    print(f"✅ Test login: {user['name']} ({role})")
+    print(f"[OK] Test login: {user['name']} ({role})")
 
     return redirect(url_for('admin.dashboard'))
 

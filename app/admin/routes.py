@@ -186,7 +186,7 @@ def vm_detail(vm_name):
     try:
         dns_config = get_vm_dns_config(resource_group, vm_name)
     except Exception as e:
-        print(f"⚠️ DNS config fetch failed: {e}")
+        print(f"[WARN] DNS config fetch failed: {e}")
         dns_config = {
             'os_type':  vm_info.get('os_type', 'Unknown'),
             'hostname': vm_name,
@@ -199,7 +199,7 @@ def vm_detail(vm_name):
             resource_group, vm_name
         )
     except Exception as e:
-        print(f"⚠️ Patch config fetch failed: {e}")
+        print(f"[WARN] Patch config fetch failed: {e}")
         patch_config = {
             'vm_name':        vm_name,
             'os_type':        vm_info.get('os_type', 'Unknown'),
@@ -891,7 +891,7 @@ def decommission_hard_delete(decom_id):
                 vm_name=decom.vm_name,
             )
             if not snow_result['success']:
-                print(f'⚠️  SNOW close failed for #{decom_id}: '
+                print(f'[WARN]  SNOW close failed for #{decom_id}: '
                       f'{snow_result.get("error")}')
         send_decom_notification(decom, 'hard_deleted')
     else:

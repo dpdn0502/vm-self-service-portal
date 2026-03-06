@@ -363,15 +363,15 @@ def update_ticket(sys_id, ticket_type,
         )
 
         if response.status_code == 200:
-            print(f"✅ SNOW ticket updated: {sys_id}")
+            print(f"[OK] SNOW ticket updated: {sys_id}")
             return {'success': True}
         else:
-            print(f"⚠️ SNOW update failed: "
+            print(f"[WARN] SNOW update failed: "
                   f"{response.status_code}")
             return {'success': False}
 
     except Exception as e:
-        print(f"⚠️ SNOW update error: {e}")
+        print(f"[WARN] SNOW update error: {e}")
         return {'success': False, 'error': str(e)}
 
 
@@ -438,7 +438,7 @@ def post_to_snow(table, payload, prefix):
             sys_id     = result.get('sys_id', '')
             ticket_url = build_ticket_url(table, sys_id)
 
-            print(f"✅ SNOW {prefix} created: {number}")
+            print(f"[OK] SNOW {prefix} created: {number}")
 
             return {
                 'success':         True,
@@ -448,7 +448,7 @@ def post_to_snow(table, payload, prefix):
                 'ticket_type':     table
             }
         else:
-            print(f"❌ SNOW failed: "
+            print(f"[ERR] SNOW failed: "
                   f"{response.status_code}: "
                   f"{response.text}")
             return {
@@ -461,19 +461,19 @@ def post_to_snow(table, payload, prefix):
             }
 
     except requests.exceptions.ConnectionError:
-        print("❌ Cannot connect to ServiceNow")
+        print("[ERR] Cannot connect to ServiceNow")
         return {
             'success': False,
             'error':   'Cannot connect to ServiceNow'
         }
     except requests.exceptions.Timeout:
-        print("❌ ServiceNow request timed out")
+        print("[ERR] ServiceNow request timed out")
         return {
             'success': False,
             'error':   'ServiceNow request timed out'
         }
     except Exception as e:
-        print(f"❌ ServiceNow error: {e}")
+        print(f"[ERR] ServiceNow error: {e}")
         return {
             'success': False,
             'error':   str(e)
@@ -553,7 +553,7 @@ def close_change_request(snow_ticket: str, close_notes: str,
             timeout=10
         )
         if pr.status_code == 200:
-            print(f'✅ SNOW {snow_ticket} closed (sys_id={sys_id})')
+            print(f'[OK] SNOW {snow_ticket} closed (sys_id={sys_id})')
             return {'success': True, 'sys_id': sys_id, 'error': None}
         else:
             return {
@@ -562,7 +562,7 @@ def close_change_request(snow_ticket: str, close_notes: str,
             }
 
     except Exception as e:
-        print(f'⚠️  SNOW close_change_request error: {e}')
+        print(f'[WARN]  SNOW close_change_request error: {e}')
         return {'success': False, 'error': str(e)}
 
 

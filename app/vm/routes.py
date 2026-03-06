@@ -11,6 +11,7 @@ from app.vm.rbac_service import (
 # Standard library imports
 import csv
 import io
+import threading
 from functools import wraps
 from datetime import datetime
 
@@ -137,69 +138,71 @@ def vm_action():
                 'status':  'error',
                 'message': f'Unknown action: {action}'
             })
-
         status = 'success'
 
     except Exception as e:
         message = str(e)
         status  = 'error'
-        print(f"❌ VM action failed: {e}")
-    
-    try:
-        if action == 'start':
-            message = start_vm(resource_group, vm_name)
-        elif action == 'stop':
-            message = stop_vm(resource_group, vm_name)
-        elif action == 'restart':
-            message = restart_vm(resource_group, vm_name)
-        else:
-            return jsonify({
-                'status':  'error',
-                'message': f'Unknown action: {action}'
-            })
-
-        status = 'success'
-
-    except Exception as e:
-        message = str(e)
-        status  = 'error'
-        print(f"❌ VM action failed: {e}")
+        print(f"[ERR] VM action failed: {e}")
 
     # Bust VM list cache so the next page load shows updated state
     if status == 'success':
         invalidate_vm_cache()
 
-    # Create ServiceNow ticket
-    snow_result = create_incident(
-        vm_name        = vm_name,
-        action         = action,
-        user_name      = user.get('name'),
-        user_email     = user.get('preferred_username'),
-        resource_group = resource_group,
-        status         = status,
-        message        = message
-    )
-
-    # Log to audit
+    # Log to audit immediately (no SNOW ticket number yet)
     log = AuditLog(
-        user_email      = user.get('preferred_username'),
-        user_name       = user.get('name'),
-        vm_name         = vm_name,
-        resource_group  = resource_group,
-        action          = action,
-        status          = status,
-        message         = message,
-        snow_ticket     = snow_result.get('incident_number'),
-        snow_ticket_url = snow_result.get('incident_url')
+        user_email     = user.get('preferred_username'),
+        user_name      = user.get('name'),
+        vm_name        = vm_name,
+        resource_group = resource_group,
+        action         = action,
+        status         = status,
+        message        = message,
     )
     db.session.add(log)
     db.session.commit()
+    log_id = log.id
+
+    # Create ServiceNow ticket in background — does not block response
+    def _snow_async(app, log_id, vm_name, action, user_name,
+                    user_email, resource_group, status, message):
+        with app.app_context():
+            try:
+                snow_result = create_incident(
+                    vm_name        = vm_name,
+                    action         = action,
+                    user_name      = user_name,
+                    user_email     = user_email,
+                    resource_group = resource_group,
+                    status         = status,
+                    message        = message
+                )
+                if snow_result.get('success'):
+                    from models import db, AuditLog
+                    audit = AuditLog.query.get(log_id)
+                    if audit:
+                        audit.snow_ticket     = snow_result.get('incident_number')
+                        audit.snow_ticket_url = snow_result.get('incident_url')
+                        db.session.commit()
+            except Exception as e:
+                print(f"[WARN] Background SNOW failed: {e}")
+
+    from flask import current_app
+    t = threading.Thread(
+        target=_snow_async,
+        args=(current_app._get_current_object(), log_id,
+              vm_name, action, user.get('name'),
+              user.get('preferred_username'),
+              resource_group, status, message),
+        daemon=True
+    )
+    t.start()
 
     return jsonify({
         'status':      status,
         'message':     message,
-        'snow_ticket': snow_result.get('incident_number'),
-        'snow_url':    snow_result.get('incident_url')
+        'snow_ticket': 'Pending',
+        'snow_url':    None
     })
 
 
@@ -408,7 +411,7 @@ def vm_detail(vm_name):
         error           = None
     except Exception as e:
         import traceback
-        print(f"❌ VM detail error: {e}")
+        print(f"[ERR] VM detail error: {e}")
         print(traceback.format_exc())
         disks           = []
         snapshots       = []
@@ -425,7 +428,7 @@ def vm_detail(vm_name):
     try:
         dns_config = get_vm_dns_config(resource_group, vm_name)
     except Exception as e:
-        print(f"⚠️ DNS config fetch failed: {e}")
+        print(f"[WARN] DNS config fetch failed: {e}")
         dns_config = {
             'os_type':  vm_info.get('os_type', 'Unknown'),
             'hostname': vm_name,
@@ -438,7 +441,7 @@ def vm_detail(vm_name):
             resource_group, vm_name
         )
     except Exception as e:
-        print(f"⚠️ Patch config fetch failed: {e}")
+        print(f"[WARN] Patch config fetch failed: {e}")
         patch_config = {
             'vm_name':        vm_name,
             'os_type':        vm_info.get('os_type', 'Unknown'),

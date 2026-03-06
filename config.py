@@ -18,7 +18,7 @@ class Config:
 
     # MSAL
     AUTHORITY = f"https://login.microsoftonline.com/{os.getenv('AZURE_TENANT_ID')}"
-    REDIRECT_URI = "http://localhost:5000/auth/callback"
+    REDIRECT_URI = os.getenv('REDIRECT_URI', 'http://localhost:5000/auth/callback')
     SCOPE = ["User.Read"]
 
     # Database — SQLite for now, Azure SQL later

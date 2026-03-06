@@ -157,5 +157,5 @@ def set_vm_timezone(resource_group, vm_name, os_type, timezone_id):
     )
     poller.result()
 
-    print(f"✅ Timezone set to '{timezone_id}' on '{vm_name}'")
+    print(f"[OK] Timezone set to '{timezone_id}' on '{vm_name}'")
     return f"Timezone set to '{timezone_id}' on '{vm_name}'"

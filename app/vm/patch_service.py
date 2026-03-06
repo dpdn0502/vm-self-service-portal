@@ -193,7 +193,7 @@ def get_vm_patch_status(resource_group, vm_name):
         }
 
     except Exception as e:
-        print(f"⚠️ Patch status fetch failed for {vm_name}: {e}")
+        print(f"[WARN] Patch status fetch failed for {vm_name}: {e}")
         return {
             'vm_name':        vm_name,
             'os_type':        'Unknown',
@@ -237,7 +237,7 @@ def trigger_patch_assessment(resource_group, vm_name):
         f"Status: {status_str}. "
         f"Results will appear in Azure Portal within ~10 minutes."
     )
-    print(f"✅ {msg}")
+    print(f"[OK] {msg}")
     return msg
 
 
@@ -293,7 +293,7 @@ def install_patches(resource_group, vm_name, os_type,
         + (f", Failed: {failed}" if failed else "")
         + f". Reboot setting: {reboot_setting}."
     )
-    print(f"✅ {msg}")
+    print(f"[OK] {msg}")
     return msg
 
 
@@ -359,7 +359,7 @@ def set_patch_mode(resource_group, vm_name, os_type, patch_mode):
         + (" with AutomaticByPlatform assessment."
            if patch_mode == 'AutomaticByPlatform' else ".")
     )
-    print(f"✅ {msg}")
+    print(f"[OK] {msg}")
     return msg
 
 
@@ -439,10 +439,10 @@ def get_all_vms_patch_summary():
                 })
 
             except Exception as e:
-                print(f"⚠️ Skipping VM {vm.name}: {e}")
+                print(f"[WARN] Skipping VM {vm.name}: {e}")
 
     except Exception as e:
-        print(f"❌ Patch summary fetch failed: {e}")
+        print(f"[ERR] Patch summary fetch failed: {e}")
         raise
 
     return result

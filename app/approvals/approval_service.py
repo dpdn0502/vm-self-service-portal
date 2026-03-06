@@ -85,7 +85,7 @@ def create_approval_request(user, vm_name, resource_group,
     try:
         send_approval_email(approval)
     except Exception as e:
-        print(f"⚠️ Email failed but approval created: {e}")
+        print(f"[WARN] Email failed but approval created: {e}")
 
     # ── Create ServiceNow ticket ──────────────────────────────
     try:
@@ -122,11 +122,11 @@ def create_approval_request(user, vm_name, resource_group,
                                             'change_request'
                                         )
             db.session.commit()
-            print(f"✅ SNOW ticket saved: "
+            print(f"[OK] SNOW ticket saved: "
                   f"{approval.snow_ticket}")
 
     except Exception as e:
-        print(f"⚠️ ServiceNow failed but "
+        print(f"[WARN] ServiceNow failed but "
               f"approval created: {e}")
 
     return approval
@@ -147,7 +147,7 @@ def send_approval_email(approval):
     body = f"""
     <html><body>
     <h2 style="color:#0078d4">
-        ⚠️ VM Action Approval Required
+        [WARN] VM Action Approval Required
     </h2>
     <table border="1" cellpadding="8"
            style="border-collapse:collapse; width:100%">
@@ -192,7 +192,7 @@ def send_approval_email(approval):
        style="background:#0078d4; color:white;
               padding:12px 24px; text-decoration:none;
               border-radius:4px; font-weight:bold">
-        ✅ Review &amp; Approve / Reject
+        [OK] Review &amp; Approve / Reject
     </a>
     <p style="color:grey; font-size:12px">
         Requires <b>2 approvals</b> before executing.<br>
@@ -226,16 +226,16 @@ def send_approval_email(approval):
                         approver_email,
                         msg.as_string()
                     )
-                print(f"✅ Email sent to {approver_email}")
+                print(f"[OK] Email sent to {approver_email}")
                 break
 
             except smtplib.SMTPAuthenticationError:
-                print(f"❌ Auth failed for {approver_email}")
+                print(f"[ERR] Auth failed for {approver_email}")
                 break
 
             except Exception as e:
                 wait = (attempt + 1) * 5
-                print(f"⚠️ Attempt {attempt+1}/3: {e}")
+                print(f"[WARN] Attempt {attempt+1}/3: {e}")
                 if attempt < 2:
                     time.sleep(wait)
 
@@ -280,7 +280,7 @@ def process_approval_decision(approval_id, approver_email,
         approval.approver1_at      = now
         approval.approver1_name    = approver_email
         decision_made              = True
-        print(f"✅ Approver 1 recorded: {decision}")
+        print(f"[OK] Approver 1 recorded: {decision}")
 
         # Same person is both approvers
         if (approver_email == approval.approver2_azure and
@@ -289,7 +289,7 @@ def process_approval_decision(approval_id, approver_email,
             approval.approver2_comment = comment
             approval.approver2_at      = now
             approval.approver2_name    = approver_email
-            print(f"✅ Approver 2 also recorded: {decision}")
+            print(f"[OK] Approver 2 also recorded: {decision}")
 
     # Check Approver 2 only
     elif (approver_email == approval.approver2_azure and
@@ -300,7 +300,7 @@ def process_approval_decision(approval_id, approver_email,
         approval.approver2_at      = now
         approval.approver2_name    = approver_email
         decision_made              = True
-        print(f"✅ Approver 2 recorded: {decision}")
+        print(f"[OK] Approver 2 recorded: {decision}")
 
     if not decision_made and is_admin:
         # Admin override — fill whichever approver slot is still pending
@@ -311,21 +311,21 @@ def process_approval_decision(approval_id, approver_email,
             approval.approver1_at      = now
             approval.approver1_name    = approver_email
             decision_made              = True
-            print(f"✅ Admin override — Approver 1 recorded: {decision}")
+            print(f"[OK] Admin override — Approver 1 recorded: {decision}")
             # If both slots same person or approver2 already decided
             if approval.approver2_status == 'pending':
                 approval.approver2_status  = decision
                 approval.approver2_comment = comment
                 approval.approver2_at      = now
                 approval.approver2_name    = approver_email
-                print(f"✅ Admin override — Approver 2 also recorded: {decision}")
+                print(f"[OK] Admin override — Approver 2 also recorded: {decision}")
         elif approval.approver2_status == 'pending':
             approval.approver2_status  = decision
             approval.approver2_comment = comment
             approval.approver2_at      = now
             approval.approver2_name    = approver_email
             decision_made              = True
-            print(f"✅ Admin override — Approver 2 recorded: {decision}")
+            print(f"[OK] Admin override — Approver 2 recorded: {decision}")
 
     if not decision_made:
         return {
@@ -608,11 +608,11 @@ def execute_approved_action(approval):
                     message     = message,
                     user_name   = approval.requester_name
                 )
-                print(f"✅ Ticket auto-closed: "
+                print(f"[OK] Ticket auto-closed: "
                       f"{approval.snow_ticket}")
 
         except Exception as e:
-            print(f"⚠️ Auto-close failed: {e}")
+            print(f"[WARN] Auto-close failed: {e}")
 
         notify_requester(approval, 'executed', message)
 
@@ -624,7 +624,7 @@ def execute_approved_action(approval):
 
     except Exception as e:
         import traceback
-        print(f"❌ Execute failed: {e}")
+        print(f"[ERR] Execute failed: {e}")
         print(traceback.format_exc())
 
         approval.status = 'failed'
@@ -643,8 +643,8 @@ def notify_requester(approval, status, message=''):
         return
 
     status_text = {
-        'rejected': '❌ Your request was rejected',
-        'executed': '✅ Your request was approved '
+        'rejected': '[ERR] Your request was rejected',
+        'executed': '[OK] Your request was approved '
                     'and executed'
     }.get(status, status)
 
@@ -729,21 +729,21 @@ def notify_requester(approval, status, message=''):
                     approval.requester_email,
                     msg.as_string()
                 )
-            print(f"✅ Requester notified: "
+            print(f"[OK] Requester notified: "
                   f"{approval.requester_email}")
             return
 
         except smtplib.SMTPAuthenticationError:
-            print(f"❌ Email auth failed — GoDaddy blocking")
+            print(f"[ERR] Email auth failed — GoDaddy blocking")
             return
 
         except Exception as e:
             wait = (attempt + 1) * 5
-            print(f"⚠️ Email attempt {attempt+1}/3: {e}")
+            print(f"[WARN] Email attempt {attempt+1}/3: {e}")
             if attempt < 2:
                 time.sleep(wait)
 
-    print(f"⚠️ All email attempts failed — "
+    print(f"[WARN] All email attempts failed — "
           f"action was still successful")
 
 

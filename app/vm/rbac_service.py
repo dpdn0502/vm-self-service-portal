@@ -85,7 +85,7 @@ def get_user_portal_role(user_object_id,
     # ── Break-glass admin check first ────────────────────────
     if user_email and user_email.lower() \
        in [a.lower() for a in PORTAL_ADMINS]:
-        print(f"✅ Hardcoded admin: {user_email}")
+        print(f"[OK] Hardcoded admin: {user_email}")
         return 'admin'
 
     # ── Azure RBAC lookup ─────────────────────────────────────
@@ -140,14 +140,14 @@ def get_user_portal_role(user_object_id,
                     highest_role, portal_role
                 )
 
-        print(f"✅ Final portal role: {highest_role}")
+        print(f"[OK] Final portal role: {highest_role}")
         return highest_role
 
     except Exception as e:
-        print(f"⚠️ RBAC check failed: {e}")
+        print(f"[WARN] RBAC check failed: {e}")
         print(f"Defaulting to reader role")
         return 'reader'
-    
+
         # Get all role assignments for this user
         assignments = auth_client.role_assignments.list_for_scope(
                                            scope,
@@ -182,11 +182,11 @@ def get_user_portal_role(user_object_id,
                     highest_role, portal_role
                 )
 
-        print(f"✅ Final portal role: {highest_role}")
+        print(f"[OK] Final portal role: {highest_role}")
         return highest_role
 
     except Exception as e:
-        print(f"⚠️ RBAC check failed: {e}")
+        print(f"[WARN] RBAC check failed: {e}")
         print(f"Defaulting to reader role")
         return 'reader'  # Fail safe — least privilege
 

@@ -194,11 +194,11 @@ def get_vms_for_user(user_oid, portal_role, is_test_user=False):
         print(f"────────────────────────────────────────")
 
         if sub_access:
-            print("✅ Subscription-level access — returning all VMs")
+            print("[OK] Subscription-level access — returning all VMs")
             return get_all_vms()
 
         if not allowed_rgs and not allowed_vm_names:
-            print("⚠️ No RBAC assignments found — returning empty list")
+            print("[WARN] No RBAC assignments found — returning empty list")
             return []
 
         all_vms = get_all_vms()
@@ -207,11 +207,11 @@ def get_vms_for_user(user_oid, portal_role, is_test_user=False):
             if v['resource_group'].lower() in allowed_rgs
             or v['name'].lower() in allowed_vm_names
         ]
-        print(f"✅ Filtered to {len(filtered)}/{len(all_vms)} VMs")
+        print(f"[OK] Filtered to {len(filtered)}/{len(all_vms)} VMs")
         return filtered
 
     except Exception as e:
-        print(f"⚠️ RBAC VM filter failed — falling back to all VMs: {e}")
+        print(f"[WARN] RBAC VM filter failed — falling back to all VMs: {e}")
         return get_all_vms()
 
 
@@ -292,7 +292,7 @@ def get_vm_info(resource_group, vm_name):
                     public_ip = pip_obj.ip_address
 
     except Exception as e:
-        print(f"⚠️  Could not get public IP for {vm_name}: {e}")
+        print(f"[WARN]  Could not get public IP for {vm_name}: {e}")
 
     return {
         'os_type':        os_type,
