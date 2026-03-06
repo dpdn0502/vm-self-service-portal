@@ -20,3 +20,8 @@ smtptest.py
 
 # VS Code
 .vscode/
+
+# Deployment artefacts
+deploy.zip
+nul
+tmpclaude-*
